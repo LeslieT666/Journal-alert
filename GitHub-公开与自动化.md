@@ -6,6 +6,28 @@
 
 ---
 
+## ⚠️ 实际部署实况（2026-10-05 核查）
+
+| 项目 | 实际状态 |
+|---|---|
+| 仓库 | `pkui1mpression-design/Journal-alert`（**大小写敏感**） |
+| 可见性 | **public**（未认证 API 返回 `private: false`）——并不是私密仓库 |
+| 提交历史 | 3 个：`065609fe` Initial → `4d6a1224` Add files via upload → `065f4956` Clear sendkey |
+| 🔴 密钥 | **`4d6a1224` 里的 `config.json` 有明文 SendKey，公网未认证可直接下载。必须立刻在 <https://sct.ftqq.com> 重置。** 当前 HEAD 已清空。 |
+| 本机 git | **可用**（git 2.55.0，HTTPS 正常）。旧笔记里「PortableGit 推不动」的说法是错的 |
+| GitHub 连接器 | **只读**。`create_or_update_file` / `create_branch` / `delete_file` / `create_repository` 全部 403 `Resource not accessible by integration`，推不了任何东西，必须用 `git` + PAT 或网页上传 |
+
+核查历史泄漏的命令（把 `<sha>` 换成目标提交）：
+
+```bash
+# 未认证即可下载某个提交里的文件；能下载 = 该提交对外可见
+python -c "import urllib.request;print(urllib.request.urlopen(urllib.request.Request('https://raw.githubusercontent.com/<owner>/<repo>/<sha>/config.json',headers={'User-Agent':'M'})).read().decode()[:200])"
+```
+
+> GitHub 上被 `--force` 顶掉的旧提交，仍会按 SHA 存活一段时间。所以**改文件挡不住泄漏，唯一办法是把密钥作废**。
+
+---
+
 ## 0. 先说三条最容易踩的
 
 | 坑 | 说明 |
