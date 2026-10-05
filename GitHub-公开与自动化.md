@@ -6,25 +6,78 @@
 
 ---
 
-## ⚠️ 实际部署实况（2026-10-05 核查）
+## ✅ 部署实况（2026-10-05 完成）
 
 | 项目 | 实际状态 |
 |---|---|
-| 仓库 | `pkui1mpression-design/Journal-alert`（**大小写敏感**） |
-| 可见性 | **public**（未认证 API 返回 `private: false`）——并不是私密仓库 |
-| 提交历史 | 3 个：`065609fe` Initial → `4d6a1224` Add files via upload → `065f4956` Clear sendkey |
-| 🔴 密钥 | **`4d6a1224` 里的 `config.json` 有明文 SendKey，公网未认证可直接下载。必须立刻在 <https://sct.ftqq.com> 重置。** 当前 HEAD 已清空。 |
-| 本机 git | **可用**（git 2.55.0，HTTPS 正常）。旧笔记里「PortableGit 推不动」的说法是错的 |
-| GitHub 连接器 | **只读**。`create_or_update_file` / `create_branch` / `delete_file` / `create_repository` 全部 403 `Resource not accessible by integration`，推不了任何东西，必须用 `git` + PAT 或网页上传 |
+| 仓库 | `pkui1mpression-design/Journal-alert`（**大小写敏感**），默认分支 `main` |
+| 可见性 | **public** |
+| 远端 `main` | `9d692d5fc5182607f4fe53ebccc2d97f6d61abd6`（与本地 `HEAD` 逐位一致） |
+| 已推送内容 | `bccf0e9` feat: GitHub Actions 云端每日运行 + 密钥外置 → `a4b7d719` docs: 记录仓库可见性与密钥历史泄漏的核查结果，共 21 个文件 |
+| 工作流 | `.github/workflows/daily.yml`（`30 23 * * *` UTC = 每天 07:30 北京时间） |
+| 首次试跑 | **run #1 success**，57 秒。<https://github.com/pkui1mpression-design/Journal-alert/actions/runs/37313070657> |
+| 试跑结果 | 抓取 763 篇 → 命中 174 篇 → 新增 114 篇（其中 60 篇此前已读过，说明台账继承成功）；回写提交 `9d692d5` `chore(state): 2026-10-05 daily run` |
+| 仓库变量 | `JALERT_MAILTO = pkui1mpression@gmail.com` ✅ 已设 |
+| 仓库 Secret | ⬜ **`SERVERCHAN_SENDKEY` 尚未添加** → 加之前云端不会推微信 |
+| 本机计划任务 | `JournalAlertDaily` **已注销**，XML 备份在 `C:\Users\wangs\JournalAlertDaily-task-backup.xml` |
+| GitHub 连接器 | **只读**。`create_or_update_file` / `create_branch` / `delete_file` / `create_repository` 全部 403 `Resource not accessible by integration`，必须用 API + PAT |
 
-核查历史泄漏的命令（把 `<sha>` 换成目标提交）：
+### 🔴 仍未消除的风险：旧提交里的明文 SendKey
 
-```bash
-# 未认证即可下载某个提交里的文件；能下载 = 该提交对外可见
-python -c "import urllib.request;print(urllib.request.urlopen(urllib.request.Request('https://raw.githubusercontent.com/<owner>/<repo>/<sha>/config.json',headers={'User-Agent':'M'})).read().decode()[:200])"
+已作废的旧 SendKey 在公开仓库中**仍可被未登录访问**——`--force` 只是让 `4d6a1224` 脱离 `main` 分支，对象本身还在，按 SHA 直取照样能读到（长 34 位，`SCT432…zTZs`）。
+
+处置方式（三选一）：
+
+1. **重置密钥即可（推荐，已完成）** — 密钥轮换是业界标准做法，旧值已失效，拿到也没有任何用处。零操作。
+2. **删库重建** — GitHub 网页 Settings → Danger Zone → Delete this repository，删掉后用同名重建。注意：**删仓库需要 PAT 带 `delete_repo` 权限**，本机那把只有 `repo, workflow`，我代删不了。之后重新推一次即可，`.workbuddy/api-push.py` 加 `--full-history` 直接复跑。
+3. **找 GitHub Support** — 请求清除缓存视图中的旧提交，通常要等几天。
+
+> 验证命令（不需要登录）：
+> ```bash
+> python -c "import urllib.request,json,base64;d=json.load(urllib.request.urlopen(urllib.request.Request('https://api.github.com/repos/pkui1mpression-design/Journal-alert/contents/config.json?ref=4d6a1224',headers={'User-Agent':'M'})));print(json.loads(base64.b64decode(d['content'])).get('push',{}).get('channels',{}).get('serverchan',{}).get('sendkey'))"
+> ```
+
+### 🚧 本机推不动/拉不动：改走 REST API
+
+本机到 `github.com:443` 的 git 通道被本地代理掐断：
+
+| 路径 | 实测结果 |
+|---|---|
+| 走代理 `git ls-remote` | `CONNECT tunnel failed, response 502` |
+| 绕过代理 `git -c http.proxy= ls-remote` | `Failed to connect to github.com:443 after 21016 ms` |
+| `https://api.github.com`（直连） | **200 OK** ✅ |
+| `https://raw.githubusercontent.com` | 不通（连接被掐），读文件一律改走 contents API |
+
+所以 `git push` / `git fetch` 全部不可用，改走 **GitHub Git Data REST API**，脚本在 `.workbuddy/`：
+
+| 脚本 | 作用 |
+|---|---|
+| `.workbuddy/push-to-github.sh` | 统一入口。直接跑 = 推送；`... pull` = 反向同步 |
+| `.workbuddy/api-push.py` | 把本地提交**原样重建**到远端（含作者、时间、完整提交信息），force 更新 ref |
+| `.workbuddy/api-pull.py` | 反方向做**真 fetch**：递归补齐缺失对象，再移动分支指针、同步工作区 |
+
+推送时逐层校验 sha——blob、tree、commit、ref 全部相等才收工。看到 `树 ... [OK]` 和末尾 `完全一致 : YES` 就是成功。通用版在 `~/.workbuddy/skills/github-push-via-api/`。
+
+> **三个关键细节**
+> 1. commit sha 想对上，提交信息必须取自 `git cat-file commit` 的**原始字节**——`%b` 的 body 没有尾部换行，差一字节 sha 就变了。
+> 2. 反向同步时 commit 的**时区偏移** API 不返回（只有 UTC 的 `Z`），而偏移参与哈希。脚本用候选偏移逐个试算，**哈希对上才写对象**。Actions 的提交是 `+0800`（工作流设了 `TZ: Asia/Shanghai`）。
+> 3. ⚠️ **`api-pull.py` 会 `git reset --hard`**，工作区里没提交的改动会被冲掉。脚本已加保护：工作区脏时直接拒绝执行（确要覆盖加 `--force`）。**我这轮就踩过一次**——文档改了 3 处在没提交的情况下被 reset 掉了，重做了。
+
+### △ 本地与远端的同步关系（已抹平分叉）
+
+CI 每次都会往 `main` 追加一个 `chore(state): …` 提交，本地副本会随时落后于远端。
+
+**2026-10-05 已处理**：推送完成后本地与远端一度分叉（远端多了 CI 提交 `9d692d5`）。分叉状态下若从本地强推，会把云端积累的去重台账冲掉，导致下一轮把时间窗内的文献全部当新的重推。现已用 `api-pull.py` 精确重建该提交（连 sha 都一致）：
+
+```
+本地 HEAD: 9d692d5fc5182607f4fe53ebccc2d97f6d61abd6
+与远端一致: YES
+工作区状态: 干净（无未提交改动）
 ```
 
-> GitHub 上被 `--force` 顶掉的旧提交，仍会按 SHA 存活一段时间。所以**改文件挡不住泄漏，唯一办法是把密钥作废**。
+日常顺序：**先 `push-to-github.sh pull` → 改代码 → 再 push**。别在分叉状态下 `--full-history` 强推。
+
+> 如果你哪天在**自己的终端**里用 git（不经过 WorkBuddy 的代理），`github.com` 很可能是通的——那就直接用 `git pull` / `git push`，不必绕 API。
 
 ---
 
@@ -142,13 +195,26 @@ DEFAULTS（代码里的默认值）
 
 工作流要往仓库里提交状态文件，所以声明了写权限。这是安全的：**用自动 `GITHUB_TOKEN` 推送的提交不会触发工作流**，不存在自己触发自己的死循环。
 
-### 2.3 首次验证
+### 2.3 首次验证（已完成一次）
 
 仓库 → **Actions** → 左侧 `journal-alert daily` → **Run workflow**（手动触发，这就是 `workflow_dispatch` 的作用）。
 
 手动触发时可以填两个输入框：
 * `days` —— 覆盖时间窗，**第一次建议填 `14`**，先看一批历史文献
 * `sources` —— 例如填 `openalex,crossref` 先只跑 API
+
+也可以不点鼠标，用 API 直接触发（PAT 需要 `workflow` 权限）：
+
+```bash
+curl -s -X POST \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Accept: application/vnd.github+json" \
+  https://api.github.com/repos/pkui1mpression-design/Journal-alert/actions/workflows/daily.yml/dispatches \
+  -d '{"ref":"main","inputs":{"days":"14"}}'
+# HTTP 204 = 已受理
+```
+
+**2026-10-05 实测**：run #1 全绿，57 秒。8 个步骤（checkout / setup-python / doctor 自检 / 跑管线 / 回写提交 / 上传日志 / 渲染摘要）全部 success。产物提交 `9d692d5`。
 
 ---
 
@@ -216,17 +282,20 @@ DEFAULTS（代码里的默认值）
 
 公开前：
 
-- [ ] 去 <https://sct.ftqq.com> **重置 SendKey**
-- [ ] 确认仓库历史里没有其他密钥：`git log -p | findstr /i "sendkey token key"`，GitHub 网页上也可以逐提交看
-- [ ] 取消跟踪 `logs/`、`state/daily/`、`reports/*.json`（若已上传）
-- [ ] 检查 `README.md`、`推送配置指南.md` 里没有残留的私人路径
+- [x] 去 <https://sct.ftqq.com> **重置 SendKey**
+- [x] 确认仓库历史里没有其他密钥（`4d6a1224` 里那把已作废，见文首「仍未消除的风险」）
+- [x] 取消跟踪 `logs/`、`state/daily/`、`reports/*.json`
+- [x] 检查 `README.md`、`推送配置指南.md` 里没有残留的私人路径
+- [x] 推送云端改造（21 个文件，`a4b7d719`）
+- [x] 注销本机计划任务 `JournalAlertDaily`
 
 公开后：
 
-- [ ] Settings → Secrets 建好 `SERVERCHAN_SENDKEY`，Variables 建好 `JALERT_MAILTO`
-- [ ] Actions 页面手动 Run workflow 一次，`days` 填 `14` 验证
-- [ ] 手机确认收到推送
-- [ ] 确认 `state/seen.sqlite` 和 `reports/YYYY-MM-DD.md` 出现在新提交里
+- [ ] **Settings → Secrets → Actions → New repository secret** 建 `SERVERCHAN_SENDKEY`，值为**重置后的新 SendKey** ← 只剩这一步
+- [x] Variables 建好 `JALERT_MAILTO`（= `pkui1mpression@gmail.com`，已设）
+- [x] Actions 手动 Run workflow 一次（`days=14`），run #1 全绿
+- [ ] 加了 Secret 后再触发一次，手机确认收到推送
+- [x] 确认 `state/seen.sqlite` 和 `reports/YYYY-MM-DD.md` 出现在新提交里（`9d692d5`）
 - [ ] 第二天看 07:30 有没有自动跑（Actions 页面的时间线）
 
 ---
