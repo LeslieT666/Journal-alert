@@ -28,3 +28,10 @@ config.local.json
 Thumbs.db
 Desktop.ini
 ~$*
+
+# ---- 笔记库（本机个人笔记，绝不进公开仓库）--------------------------------
+# 工作流里那步 "git add -A" 会把未跟踪目录一起提交上去，所以这里必须显式忽略。
+Journal-alert/
+.obsidian/
+*.base
+欢迎.md
