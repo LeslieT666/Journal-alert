@@ -3,7 +3,7 @@ REM ---------------------------------------------------------------------------
 REM  journal-alert daily runner (portable - no machine-specific paths)
 REM
 REM  Finds any usable Python 3 on this PC, then runs the pipeline.
-REM  Register with Windows Task Scheduler (see README.md / 部署到新电脑.md).
+REM  Register with Windows Task Scheduler (see README.md section 7.2).
 REM
 REM  No arguments -> scheduled mode: all output goes to logs\run-last.log
 REM  Any argument -> interactive mode: output goes to the console

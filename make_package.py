@@ -19,9 +19,15 @@ from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-ALWAYS_EXCLUDE_DIRS = {"logs", "reports", "_probe", "__pycache__", ".git", ".workbuddy"}
+# NOTE: "Journal-alert" 和 ".obsidian" 是用户的个人笔记库（Obsidian 库就建在项目
+# 目录里）。这个 zip 是可以对外分享的，绝不能把个人笔记打进去 —— 之前漏了这两个，
+# 导致 .obsidian/ 和 欢迎.md 混进了包里。
+ALWAYS_EXCLUDE_DIRS = {
+    "logs", "reports", "_probe", "__pycache__", ".git", ".workbuddy",
+    "Journal-alert", ".obsidian",
+}
 ALWAYS_EXCLUDE_SUFFIXES = {".pyc", ".pyo"}
-ALWAYS_EXCLUDE_NAMES = {".write-test", "config.local.json", ".env", ".env.local"}
+ALWAYS_EXCLUDE_NAMES = {".write-test", "config.local.json", ".env", ".env.local", "欢迎.md"}
 STATE_DIRS = {"state"}
 SECRET_FIELDS = {"serverchan": "sendkey", "pushplus": "token", "bark": "key"}
 
@@ -46,22 +52,21 @@ state/ 里是「已读台账」。
        run_daily.cmd --doctor
 
 3) 注册每日计划任务（周一至周五 07:30）
-   完整命令见「部署到新电脑.md」第 4 步，可直接复制粘贴。
+   完整命令见 README.md 第 7.2 节，可直接复制粘贴。
    注意那条命令里的 $settings 不能省，否则笔记本上电池供电时不会运行。
 
 可选：开通微信推送
-   见「推送配置指南.md」（约 3 分钟），配好后执行：
+   见 README.md 第 6 节（约 3 分钟），配好后执行：
        run_daily.cmd --test-push
 
 文档导航
 ----------------------------------------------------------------------
-部署到新电脑.md    <- 换机器的完整清单，先看这个
-README.md          <- 完整使用手册（关键词、期刊、分级规则、排查）
-推送配置指南.md    <- 微信推送密钥申请步骤
+README.md    <- 唯一的文档：快速开始、每日自动运行、微信推送、
+                换电脑迁移、关键词与期刊配置、数据源、故障排查
 
 注意事项
 ----------------------------------------------------------------------
-- config.json 里如果填了推送密钥，那就是明文。别把这个包分享给别人。
+- config.local.json 里放推送密钥（明文）。别把这个包分享给别人。
 - 计划任务不会跟着文件夹走，必须在新电脑上重新注册一次。
 - 项目放在哪个盘、哪个目录都行，代码里没有写死路径。
 """
@@ -151,7 +156,7 @@ def main(argv: list[str] | None = None) -> int:
     if stripped:
         print()
         print("注意：为了让这个包可以安全地用邮件/网盘/U盘传递，推送密钥已从包里清空。")
-        print("      到新电脑后照《推送配置指南.md》第 3 步填一次即可（约 30 秒）。")
+        print("      到新电脑后照 README.md 第 6 节填一次即可（约 30 秒）。")
         print("      如果只在自己两台电脑之间用 U 盘直接拷、想省掉这一步，改用：")
         print("          python make_package.py --keep-secrets")
     print()
