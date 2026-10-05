@@ -1,0 +1,111 @@
+name: journal-alert daily
+
+# 07:30 Asia/Shanghai == 23:30 UTC (previous day). GitHub's cron is always UTC.
+# Scheduled runs can be delayed by a few minutes at peak times - harmless here.
+on:
+  schedule:
+    - cron: "30 23 * * *"
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "覆盖时间窗（天）。留空 = 用 config.json 的自适应窗口"
+        required: false
+        default: ""
+      sources:
+        description: "只跑指定数据源，逗号分隔（如 openalex,crossref）。留空 = 全部"
+        required: false
+        default: ""
+
+# Needed so the job can commit the dedupe ledger and the daily report back.
+permissions:
+  contents: write
+
+# Never let two runs overlap; queue instead of cancelling.
+concurrency:
+  group: journal-alert
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      # Without this the container is UTC and run.py would name the report with
+      # yesterday's date (23:30 UTC is already "tomorrow" in Beijing).
+      TZ: Asia/Shanghai
+      # Push keys come from repo Secrets -> Settings -> Secrets and variables -> Actions.
+      # Missing secrets expand to an empty string, and an empty key just disables
+      # that channel, so it is safe to leave any of these undefined.
+      JALERT_SERVERCHAN_SENDKEY: ${{ secrets.SERVERCHAN_SENDKEY }}
+      JALERT_PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
+      JALERT_BARK_KEY: ${{ secrets.BARK_KEY }}
+      # Optional: a real contact address gets OpenAlex/Crossref "polite pool" priority.
+      JALERT_MAILTO: ${{ vars.JALERT_MAILTO }}
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # The pipeline is standard-library only, so there is nothing to pip install.
+      # Diagnostic only: a transient probe timeout must not fail the whole job.
+      - name: Environment self-check
+        continue-on-error: true
+        run: python run.py --doctor
+
+      - name: Run pipeline
+        env:
+          EXTRA_DAYS: ${{ inputs.days }}
+          EXTRA_SOURCES: ${{ inputs.sources }}
+        run: |
+          set -eu
+          ARGS="--once"
+          if [ -n "${EXTRA_DAYS}" ]; then ARGS="$ARGS --days ${EXTRA_DAYS}"; fi
+          if [ -n "${EXTRA_SOURCES}" ]; then ARGS="$ARGS --sources ${EXTRA_SOURCES}"; fi
+          echo "python run.py ${ARGS}"
+          python run.py ${ARGS}
+
+      # The dedupe ledger (state/seen.sqlite) and reports/*.md are the only
+      # things that must survive between runs, so they are committed back.
+      # NOTE: this uses the automatic GITHUB_TOKEN, and pushes made with it do
+      # not trigger workflows - so there is no self-triggering loop.
+      - name: Commit state and report back
+        if: always()
+        run: |
+          set -eu
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "nothing changed"
+          else
+            git commit -m "chore(state): $(date +%F) daily run"
+            git push
+          fi
+
+      # Logs and per-day snapshots are diagnostics, not history: keep them as
+      # artifacts (90 days) instead of growing the repository forever.
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-${{ github.run_number }}
+          path: |
+            logs/
+            state/daily/
+          if-no-files-found: ignore
+          retention-days: 90
+
+      # Render the day's report in the Actions run page itself.
+      - name: Job summary
+        if: always()
+        run: |
+          report="reports/$(date +%F).md"
+          if [ -f "$report" ]; then
+            cat "$report" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "没有生成当日报告，请查看上面步骤的日志。" >> "$GITHUB_STEP_SUMMARY"
+          fi

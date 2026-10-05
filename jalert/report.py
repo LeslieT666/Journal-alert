@@ -1,0 +1,189 @@
+"""Markdown report rendering."""
+
+from __future__ import annotations
+
+from datetime import date as _date
+
+from .score import TIER_TITLES, tier_of
+
+TIER_ORDER = ["must_read", "worth_reading", "other"]
+
+
+def _fmt_date(value: str) -> str:
+    """Elsevier-style feeds stamp the *issue* date, which can be in the future."""
+    if not value:
+        return "未知"
+    return f"{value}（在线预发表）" if value > _date.today().isoformat() else value
+
+
+def _link(item) -> str:
+    if getattr(item, "url", ""):
+        return item.url
+    if getattr(item, "doi", ""):
+        return f"https://doi.org/{item.doi}"
+    return ""
+
+
+def _doi_link(doi: str) -> str:
+    return f"[{doi}](https://doi.org/{doi})" if doi else "—"
+
+
+def _truncate(text: str, limit: int) -> str:
+    text = (text or "").strip()
+    if len(text) <= limit:
+        return text
+    cut = text[:limit].rsplit(" ", 1)[0]
+    return cut + " …"
+
+
+def build_markdown(
+    *,
+    day: str,
+    cfg: dict,
+    entries: list[dict],
+    statuses: list[dict],
+    fetched_total: int,
+    matched_total: int,
+    new_count: int = 0,
+    seen_before: int = 0,
+    generated_at: str,
+    entries_total: int | None = None,
+    all_entries: list[dict] | None = None,
+) -> str:
+    project = cfg.get("project", {}).get("name", "文献日报")
+    # Tier counts always describe the *whole* matched set, never just the rows we
+    # were told to list - otherwise a capped report would claim "必读 10" while
+    # the push notification (which counts every new item) says something else.
+    counted = all_entries if all_entries is not None else entries
+    counts = {tier: 0 for tier in TIER_ORDER}
+    for entry in counted:
+        counts[tier_of(entry["scored"].score, cfg.get("tiers", {}))] += 1
+
+    keyword_labels = " / ".join(k.get("label", "") for k in cfg.get("keywords", []))
+    lines: list[str] = []
+    lines.append(f"# {project} · {day}")
+    lines.append("")
+    lines.append(
+        f"> 本次运行：抓取 **{fetched_total}** 篇 ｜ 关键词命中 **{matched_total}** 篇 ｜ "
+        f"新增 **{new_count}** 篇（其中 {seen_before} 篇此前已读过）"
+    )
+    if entries_total is not None and entries_total > len(entries):
+        lines.append(
+            f"> 命中 **{entries_total}** 篇，按重要度只列出前 **{len(entries)}** 篇"
+            f"（其余 {entries_total - len(entries)} 篇仍留在历史库；"
+            f"调大 `output.max_entries` 后执行 `run.py --rerender` 即可恢复）"
+        )
+    else:
+        lines.append(
+            f"> 本日报累计收录 **{len(entries)}** 篇（当天多次运行会自动合并，不重复推送）"
+        )
+    capped = entries_total is not None and entries_total > len(entries)
+    lines.append(
+        f"> 必读 **{counts['must_read']}** ｜ 值得一读 **{counts['worth_reading']}** ｜ "
+        f"其他相关 **{counts['other']}**" + ("（按全部命中统计）" if capped else "")
+    )
+    lines.append(f"> 关注方向：{keyword_labels}")
+    lines.append(f"> 时间窗：近 {cfg.get('window', {}).get('days', 3)} 天 ｜ 生成时间：{generated_at}")
+    lines.append("")
+
+    if not entries:
+        lines.append("## 今日无新增命中")
+        lines.append("")
+        lines.append("所有抓取到的文献都已在历史记录中出现过，或没有文献同时满足关键词与时间窗条件。")
+        lines.append("")
+    for tier in TIER_ORDER:
+        bucket = [e for e in entries if tier_of(e["scored"].score, cfg.get("tiers", {})) == tier]
+        if not bucket:
+            continue
+        lines.append(f"## {TIER_TITLES[tier]}（{len(bucket)}）")
+        lines.append("")
+        for index, entry in enumerate(bucket, 1):
+            item = entry["item"]
+            scored = entry["scored"]
+            url = _link(item)
+            heading = f"[{item.title}]({url})" if url else item.title
+            lines.append(f"### {index}. {heading}")
+            lines.append("")
+            meta = [
+                f"**期刊**：{item.journal}",
+                f"**日期**：{_fmt_date(item.date)}",
+            ]
+            if item.doi:
+                meta.append(f"**DOI**：{_doi_link(item.doi)}")
+            lines.append("- " + " ｜ ".join(meta))
+            hits = "、".join(f"{m.label}（{'标题' if m.field_name == 'title' else '摘要'}：{m.term}）" for m in scored.matches)
+            lines.append(f"- **匹配**：{hits} ｜ **得分**：{scored.score}")
+            if item.authors:
+                lines.append(f"- **作者**：{', '.join(item.authors[:6])}{' 等' if len(item.authors) > 6 else ''}")
+            if item.abstract:
+                lines.append("")
+                lines.append(f"> {_truncate(item.abstract, 700)}")
+            lines.append("")
+        lines.append("---")
+        lines.append("")
+
+    lines.append("## 数据源状态")
+    lines.append("")
+    lines.append("| 期刊 | 数据源 | 状态 | 条数 | 说明 |")
+    lines.append("|---|---|---|---|---|")
+    for status in statuses:
+        state = "✅" if status["ok"] else "❌"
+        note = (status.get("note") or "").replace("|", "/")
+        lines.append(
+            f"| {status['journal']} | {status['source']} | {state} | {status['items']} | {note} |"
+        )
+    failed = [s for s in statuses if not s["ok"]]
+    lines.append("")
+    if failed:
+        lines.append(f"⚠️ 有 {len(failed)} 个数据源本次抓取失败，上面表格已标明原因；失败不影响其他来源。")
+    else:
+        lines.append("✅ 全部数据源抓取正常。")
+    lines.append("")
+    lines.append("---")
+    lines.append("")
+    lines.append(f"*由 journal-alert 自动生成 · {generated_at} · 历史库 `state/seen.sqlite`*")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def build_digest(
+    *,
+    day: str,
+    cfg: dict,
+    entries: list[dict],
+    fetched_total: int,
+    matched_total: int,
+    max_items: int,
+    max_chars: int,
+) -> tuple[str, str]:
+    """Return ``(title, markdown_body)`` for a push notification."""
+    project = cfg.get("project", {}).get("name", "文献日报")
+    must = [e for e in entries if tier_of(e["scored"].score, cfg.get("tiers", {})) == "must_read"]
+    must_ids = {id(e) for e in must}
+    rest = [e for e in entries if id(e) not in must_ids]
+    title = f"{project} {day}：新增 {len(entries)} 篇，必读 {len(must)} 篇"
+    lines = [
+        f"抓取 {fetched_total} 篇 · 命中 {matched_total} 篇 · 新增 **{len(entries)}** 篇",
+        "",
+    ]
+    shown = 0
+    for entry in (must + rest):
+        if shown >= max_items:
+            break
+        item = entry["item"]
+        url = _link(item)
+        star = "🔥" if id(entry) in must_ids else "·"
+        hits = "、".join(entry["scored"].labels)
+        if url:
+            lines.append(f"{star} [{_truncate(item.title, 120)}]({url})")
+        else:
+            lines.append(f"{star} {_truncate(item.title, 120)}")
+        lines.append(f"　　{item.journal} · {item.date} · 匹配 {hits}")
+        shown += 1
+    if len(entries) > shown:
+        lines.append("")
+        lines.append(f"…… 其余 {len(entries) - shown} 篇见本地日报。")
+    body = "\n".join(lines)
+    if len(body) > max_chars:
+        body = body[:max_chars].rsplit("\n", 1)[0] + "\n\n……（已截断，完整内容见本地 Markdown 日报）"
+    return title, body
