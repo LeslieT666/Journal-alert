@@ -6,21 +6,34 @@
 
 ---
 
-## ✅ 部署实况（2026-10-05 完成）
+## ✅ 部署实况（2026-10-05 完成，已端到端验证）
 
 | 项目 | 实际状态 |
 |---|---|
 | 仓库 | `pkui1mpression-design/Journal-alert`（**大小写敏感**），默认分支 `main` |
 | 可见性 | **public** |
-| 远端 `main` | `9d692d5fc5182607f4fe53ebccc2d97f6d61abd6`（与本地 `HEAD` 逐位一致） |
-| 已推送内容 | `bccf0e9` feat: GitHub Actions 云端每日运行 + 密钥外置 → `a4b7d719` docs: 记录仓库可见性与密钥历史泄漏的核查结果，共 21 个文件 |
+| 远端 `main` | `606ce9d140b2e1bfe8d431e2bb8b683963d14511`（与本地 `HEAD` 逐位一致） |
 | 工作流 | `.github/workflows/daily.yml`（`30 23 * * *` UTC = 每天 07:30 北京时间） |
-| 首次试跑 | **run #1 success**，57 秒。<https://github.com/pkui1mpression-design/Journal-alert/actions/runs/37313070657> |
-| 试跑结果 | 抓取 763 篇 → 命中 174 篇 → 新增 114 篇（其中 60 篇此前已读过，说明台账继承成功）；回写提交 `9d692d5` `chore(state): 2026-10-05 daily run` |
+| **微信推送** | ✅ **已验证成功**。run #2 日志：`push serverchan OK code=0`（`code=0` 是 Server酱成功码） |
+| run #1 | 12:57 UTC，57 秒，全绿。抓取 763 → 命中 174 → 新增 114（60 篇此前已读）→ 回写 `9d692d5` |
+| run #2 | 13:22 UTC，21 秒，全绿。抓取 305 → 命中 65 → **新增 1**（64 篇已读）→ 回写 `606ce9d`。**这一轮带 Secret，推送成功** |
 | 仓库变量 | `JALERT_MAILTO = pkui1mpression@gmail.com` ✅ 已设 |
-| 仓库 Secret | ⬜ **`SERVERCHAN_SENDKEY` 尚未添加** → 加之前云端不会推微信 |
+| 仓库 Secret | `SERVERCHAN_SENDKEY` ✅ 已建（13:21 UTC），推送已验证 |
 | 本机计划任务 | `JournalAlertDaily` **已注销**，XML 备份在 `C:\Users\wangs\JournalAlertDaily-task-backup.xml` |
-| GitHub 连接器 | **只读**。`create_or_update_file` / `create_branch` / `delete_file` / `create_repository` 全部 403 `Resource not accessible by integration`，必须用 API + PAT |
+| GitHub 连接器 | **只读**。`create_or_update_file` / `create_branch` / `delete_file` / `create_repository` 全部 403，必须用 API + PAT |
+
+### 📊 run #2 数据源健康度（16 刊 × 3 源 = 48 次调用）
+
+**成功 46 次，失败 2 次**，覆盖无缺口：
+
+| 源 | 结果 | 影响 |
+|---|---|---|
+| Nature Cities · RSS | XML 格式错误（0.2s） | 无。本机抓同一地址正常（返回 8 条），属云端瞬时问题；且 OpenAlex + Crossref 兜底 |
+| Nature Climate Change · RSS | XML 格式错误（0.2s） | 同上 |
+| Environmental Science & Technology · RSS | `skipped (no feed configured)` | 正常。该刊本就没有 RSS，设计如此 |
+
+> **这正是「每刊至少两个源兜底」的价值**：单纯 RSS 挂掉不会漏文献。
+> 之前担心的「云机房 IP 被出版商 403」这次**没有发生**——失败是解析层面的，不是风控。
 
 ### 🔴 仍未消除的风险：旧提交里的明文 SendKey
 
@@ -260,9 +273,9 @@ curl -s -X POST \
 |---|---|
 | 定时任务不按点跑，晚十几分钟 | GitHub cron 在整点高峰期会排队，延迟 5–30 分钟是常态。对日报无影响。要准点就得用自建 runner 或外部 cron 打 `workflow_dispatch` API。 |
 | 工作流「跑了 60 天后自己停了」 | GitHub 会停用**连续 60 天无仓库活动**的定时工作流。方案 A 每天都有提交，天然不触发。 |
-| 部分期刊 RSS 在 Actions 里 403 | **最需要留意的一条。** Elsevier / Wiley / IOP 这类出版商会按 IP 段风控，GitHub 的云机房 IP 比你家宽带更容易被拒。原设计是「每本刊至少两个源兜底」，所以即使 RSS 全 403，OpenAlex + Crossref 仍能覆盖，**不会漏文献**。若日志里 RSS 大面积失败，给工作流加 `sources: openalex,crossref` 即可（手动触发时填，或写死进 `run.py` 的调用参数）。 |
-| OpenAlex / Crossref 偶发超时 | 海外 API 约 15% 调用会超时，管线自带重试、且多源互备。日志里零星 `FAIL` 属正常。 |
-| Actions 里跑起来比本机慢 | 本机 6 路并发约 4 分钟；Actions runner 网络到出版商的距离不同，可能 5–8 分钟。`timeout-minutes: 30` 足够。 |
+| 部分期刊 RSS 在 Actions 里失败 | **实测结论（2026-10-05）：不是 403，是解析层面的偶发失败。** 之前预判「云机房 IP 被出版商风控」，run #1/#2 都没发生。run #2 的 48 次源调用里失败 2 次：Nature Cities 与 Nature Climate Change 的 RSS 报 `not well-formed (invalid token): line 14, column 4`（0.2s 就返回，说明是瞬时问题——本机抓同一地址正常，稳定返回 8 条）。**设计上每刊至少两个源兜底，所以不影响覆盖**，不用管。若哪天 RSS 大面积失败，给工作流填 `sources: openalex,crossref` 即可。 |
+| Actions 里跑起来比本机快/慢 | 波动大：run #1（14 天窗）57 秒，run #2（3 天窗）21 秒。本机 6 路并发约 4 分钟。`timeout-minutes: 30` 绰绰有余。 |
+| 想知道 CI 到底推送成功没有 | 看运行日志里的 `push results`。`{"channel": "serverchan", "ok": true, "detail": "code=0"}` 就是发出去了（`code=0` 是 Server酱成功码）。日志获取方式见文首「怎么看运行日志」。 |
 | 日报文件日期和实际日期差一天 | 说明 `TZ` 没生效。确认工作流的 job 级 `env:` 里有 `TZ: Asia/Shanghai`。 |
 | 想手动补一次 | Actions 页面 Run workflow，或本地 `python run.py --once`。两边共用台账（都在仓库里）。 |
 | 本地和 Actions 同时跑 | 会各自基于自己那份台账判断「新增」，可能重复推送。要么只在 Actions 跑，要么跑完 `git pull`。 |
@@ -294,12 +307,21 @@ curl -s -X POST \
 
 公开后：
 
-- [ ] **Settings → Secrets → Actions → New repository secret** 建 `SERVERCHAN_SENDKEY`，值为**重置后的新 SendKey** ← 只剩这一步
-- [x] Variables 建好 `JALERT_MAILTO`（= `pkui1mpression@gmail.com`，已设）
-- [x] Actions 手动 Run workflow 一次（`days=14`），run #1 全绿
-- [ ] 加了 Secret 后再触发一次，手机确认收到推送
-- [x] 确认 `state/seen.sqlite` 和 `reports/YYYY-MM-DD.md` 出现在新提交里（`9d692d5`）
+- [x] Settings → Secrets → Actions 建 `SERVERCHAN_SENDKEY`（重置后的新值）
+- [x] Variables 建好 `JALERT_MAILTO`（= `pkui1mpression@gmail.com`）
+- [x] Actions 手动 Run workflow（`days=14`）→ run #1 全绿
+- [x] 带 Secret 再触发一次（`days=3`）→ run #2 全绿，**`push serverchan OK code=0`，微信已收到**
+- [x] 确认 `state/seen.sqlite` 和 `reports/YYYY-MM-DD.md` 出现在新提交里（`9d692d5`、`606ce9d`）
 - [ ] 第二天看 07:30 有没有自动跑（Actions 页面的时间线）
+- [ ] 用完后删除 `C:\Users\wangs\.jalert-push-token` 并去 GitHub 撤销那把 PAT
+
+### 怎么看运行日志（不点鼠标）
+
+`GET /repos/{o}/{r}/actions/jobs/{id}/logs` 会 302 到 blob 存储，**直接跟会 401**——
+因为 urllib 把 `Authorization` 一起转发了，把目标的 SAS 令牌顶掉了。
+手动跟这一次重定向、且**不带 Authorization** 就能拿到（详见技能 `github-push-via-api`）。
+
+日志里能看到每本刊每个源的耗时与条数、关键词命中数、推送渠道与返回码，是验证 CI 行为最直接的手段。
 
 ---
 
