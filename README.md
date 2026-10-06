@@ -10,10 +10,10 @@
 |---|---|
 | [1. 它做什么](#1-它做什么) | [2. 快速开始](#2-快速开始) |
 | [3. 常用命令](#3-常用命令) | [4. 目录结构](#4-目录结构) |
-| [5. 配置](#5-配置) | [6. 微信推送](#6-微信推送) |
-| [7. 每天自动运行](#7-每天自动运行) | [8. 换电脑迁移](#8-换电脑迁移) |
-| [9. 数据源](#9-数据源) | [10. 故障排查](#10-故障排查) |
-| [11. 维护备忘](#11-维护备忘) | |
+| [5. 用 Obsidian 管理日报](#5-用-obsidian-管理日报) | [6. 配置](#6-配置) |
+| [7. 微信推送](#7-微信推送) | [8. 每天自动运行](#8-每天自动运行) |
+| [9. 换电脑迁移](#9-换电脑迁移) | [10. 数据源](#10-数据源) |
+| [11. 故障排查](#11-故障排查) | [12. 维护备忘](#12-维护备忘) |
 
 ---
 
@@ -97,9 +97,9 @@
 
 | 方式 | 电脑要开机吗 | 去哪配 |
 |---|---|---|
-| **GitHub Actions（推荐）** | ❌ 不用 | [第 7.1 节](#7-每天自动运行) |
-| Windows 计划任务 | ✅ 要 | [第 7.2 节](#7-每天自动运行) |
-| 开机自启 | ✅ 要 | [第 7.3 节](#7-每天自动运行) |
+| **GitHub Actions（推荐）** | ❌ 不用 | [第 8.1 节](#8-每天自动运行) |
+| Windows 计划任务 | ✅ 要 | [第 8.2 节](#8-每天自动运行) |
+| 开机自启 | ✅ 要 | [第 8.3 节](#8-每天自动运行) |
 
 ---
 
@@ -165,7 +165,7 @@ run_daily.cmd --rerender
 | `config.local.json` | **不入库**的本机覆盖层，推送密钥写这里 |
 | `.gitignore` / `LICENSE` | 入库清单 / MIT 许可证 |
 
-**打包到另一台电脑**（完整清单见 [第 8 节](#8-换电脑迁移)）：
+**打包到另一台电脑**（完整清单见 [第 9 节](#9-换电脑迁移)）：
 
 ```powershell
 run_daily.cmd  # 直接用 Python 也行：
@@ -178,9 +178,62 @@ python make_package.py --keep-secrets  # 保留密钥：只在自己电脑之间
 
 ---
 
-## 5. 配置
+## 5. 用 Obsidian 管理日报
 
-### 5.1 改关键词与期刊
+`reports/` 下每天一篇 Markdown，天生适合 Obsidian：文件名就是日期，正文是标准语法（标题、引用块、表格、外链），头部还带 YAML 属性。
+
+**推荐：单独建一个只含 `reports/` 的库**，不要混进主笔记库。
+
+```bash
+git clone --filter=blob:none --sparse https://github.com/<用户名>/Journal-alert.git journal-alert-reports
+cd journal-alert-reports
+git config core.sparseCheckoutCone false
+printf '/reports/\n' > .git/info/sparse-checkout
+git read-tree -mu HEAD
+```
+
+然后用 Obsidian 的「打开文件夹作为库」选中 `journal-alert-reports`。整个库不到 100 KB。
+
+> **两个坑**：① 不这么干的话，`jalert/*.py`、`state/seen.sqlite`、`README.md` 也会被索引，搜索和图谱里全是噪音；② `sparse-checkout` 的 **cone 模式总是保留根目录文件**，所以上面显式关掉 cone 模式、直接写规则文件。若在 Git Bash 里执行 `sparse-checkout set`，`/reports/` 会被 MSYS 当成绝对路径展开，那一步务必照上面写成规则文件。
+
+同步用一个 `同步.cmd` 放在库根目录，双击即可拉到最新日报：
+
+```bat
+@echo off
+cd /d "%~dp0"
+git fetch origin
+git merge --ff-only origin/main
+pause
+```
+
+**日报头部的属性**（由 `output.frontmatter` 控制，默认开）：
+
+| 字段 | 含义 |
+|---|---|
+| `date` / `generated` | 日报日期 / 生成时刻 |
+| `fetched` / `matched` / `new_count` | 抓取 / 命中 / 新增篇数 |
+| `must_read` / `worth_reading` / `other` | 三个级别各多少篇 |
+| `topics` | 关注方向（取自 `keywords` 的 `label`） |
+| `sources_failed` | 本次抓取失败的数据源条数 |
+
+装了 **Dataview** 插件后，一张索引页就能把这些日报汇总成表：
+
+````markdown
+```dataview
+TABLE WITHOUT ID file.link AS 日报, must_read AS 必读, worth_reading AS 值得一读
+FROM "reports"
+WHERE must_read > 0
+SORT file.name DESC
+```
+````
+
+**注意**：别在 Obsidian 里编辑 `reports/` 下的文件，同步时会冲突；库内其他位置随便加自己的笔记。
+
+---
+
+## 6. 配置
+
+### 6.1 改关键词与期刊
 
 编辑 `config.json`：
 
@@ -204,8 +257,10 @@ python make_package.py --keep-secrets  # 保留密钥：只在自己电脑之间
 * `exclude_doi_prefixes` 默认屏蔽 `10.1038/d41586`（Nature 新闻/评论/播客），只保留研究论文。
 * 增删期刊：`journals` 数组里加 `{ "name": ..., "issn": ..., "rss": ... }`。`issn` 必须准确，OpenAlex/Crossref 靠它取数。
 * **只想每天看最重要的几篇**：`output.max_entries`（默认 `0` = 不限，当前设为 `10`）。超过就只列得分最高的 N 篇，按「必读 → 值得一读 → 其他相关」的层级截取；**全部命中仍会进历史库和 `reports/YYYY-MM-DD.json`**，所以把数值调大后执行 `--rerender` 即可把其余几篇补回报告，不用重新联网抓取。
+* **报告末尾的数据源表太长**：`output.source_status` 三档 —— `full`（完整表格，排查数据源时用，是默认值）、`summary`（一切正常时只留一行，有失败才列短表，`config.json` 里用的是这个）、`none`（一个字都不提）。每篇日报后面都跟着 47 行表格实在没必要。
+* **要不要 YAML 属性**：`output.frontmatter`（默认 `true`）决定日报头部是否写 `date` / `must_read` / `topics` 等属性。用 Obsidian 看日报就保持开着，见 [第 5 节](#5-用-obsidian-管理日报)。
 
-### 5.2 配置的分层（`config.json` vs `config.local.json`）
+### 6.2 配置的分层（`config.json` vs `config.local.json`）
 
 `config.json` 是**可以公开分享**的那一份：期刊、关键词、阈值、分级规则。**里面不放任何密钥。**
 
@@ -233,7 +288,7 @@ DEFAULTS（代码里的默认值）
 
 在 GitHub Actions 里则完全不碰文件，用仓库 Secrets 通过环境变量注入。`run_daily.cmd --doctor` 会打印「本机覆盖层」路径和密钥最终来源（`Server酱（环境变量 ...）` 或 `Server酱（配置文件）`）。
 
-### 5.3 环境变量总表
+### 6.3 环境变量总表
 
 | 环境变量 | 覆盖的字段 |
 |---|---|
@@ -248,7 +303,7 @@ DEFAULTS（代码里的默认值）
 
 只要变量非空，程序会自动把该渠道 `enabled` 设为 `true`——**填了密钥就代表意图是要用**，不用再改两处。
 
-### 5.4 入库 / 不入库清单
+### 6.4 入库 / 不入库清单
 
 `config.local.json` 和 `.gitignore` 已经配好。原则是**代码 + 可分享的配置 + 每天的日报入库；运行痕迹、机器本地状态、密钥不入库**。
 
@@ -272,13 +327,13 @@ DEFAULTS（代码里的默认值）
 
 ---
 
-## 6. 微信推送
+## 7. 微信推送
 
 推送**不是必须**的：不做这一步，你依然每天有本地 Markdown 日报。但只要花三分钟配一次，就能在微信里直接收到「今天有哪些新文献」的卡片，点开即是论文链接。
 
 为什么需要你自己申请：推送要靠第三方服务把你的微信和电脑连起来，密钥等同于密码，只能你自己在手机上扫码领取。
 
-### 6.1 方案 A：Server酱（推荐，最省事）
+### 7.1 方案 A：Server酱（推荐，最省事）
 
 **第 1 步：拿到 SendKey**
 1. 电脑或手机浏览器打开 <https://sct.ftqq.com>
@@ -306,7 +361,7 @@ DEFAULTS（代码里的默认值）
 
 保存时注意**编码选 UTF-8**（记事本默认即可），文件必须仍是合法 JSON：不要少逗号、不要多逗号。
 
-> 如果你是在 **GitHub Actions** 上跑，这一步改成填仓库 Secrets：`SERVERCHAN_SENDKEY`，**不要新建任何文件**。见 [第 7.1 节](#7-每天自动运行)。
+> 如果你是在 **GitHub Actions** 上跑，这一步改成填仓库 Secrets：`SERVERCHAN_SENDKEY`，**不要新建任何文件**。见 [第 8.1 节](#8-每天自动运行)。
 
 **第 4 步：立刻自检（不用等第二天）**
 
@@ -322,7 +377,7 @@ DEFAULTS（代码里的默认值）
 
 同时手机上应该马上收到一条「推送通道自检」。免费版每天有额度，本工具每天只推 1 条，够用。
 
-### 6.2 方案 B：PushPlus
+### 7.2 方案 B：PushPlus
 
 1. 打开 <https://www.pushplus.plus>，微信扫码登录。
 2. 复制「一对一推送」里的 **token**。
@@ -332,7 +387,7 @@ DEFAULTS（代码里的默认值）
    ```
 4. 运行 `--test-push` 自检。
 
-### 6.3 方案 C：Bark（仅 iPhone，无需关注公众号）
+### 7.3 方案 C：Bark（仅 iPhone，无需关注公众号）
 
 1. App Store 安装「Bark」。
 2. 打开 App，首页那串地址 `https://api.day.app/xxxxxxxx` 里的 **xxxxxxxx** 就是 key。
@@ -346,7 +401,7 @@ DEFAULTS（代码里的默认值）
 
 推送内容是**摘要卡片**：标题为「大气环境文献日报 YYYY-MM-DD：新增 N 篇，必读 M 篇」，正文列出最多 `push.max_items`（默认 6）条，格式为「标题（可点击）+ 期刊 · 日期 · 命中关键词」。完整内容在本地 Markdown 日报里。
 
-### 6.4 排查表
+### 7.4 排查表
 
 | 现象 | 原因与处理 |
 |---|---|
@@ -357,7 +412,7 @@ DEFAULTS（代码里的默认值）
 | 一切正常但当天没有推送 | 设计行为：只有**有新增文献**时才推送（`skip_when_empty: true`），避免每天发空消息打扰你 |
 | 不知道密钥最终从哪来的 | 跑一次 `--doctor`，会打印「本机覆盖层」路径和密钥来源 |
 
-### 6.5 安全
+### 7.5 安全
 
 密钥**只**写进 `config.local.json`（已 git-ignore）或 GitHub 仓库 Secrets。`config.json` 是要提交到 Git 的，里面必须保持 `sendkey: ""`。
 
@@ -365,9 +420,9 @@ DEFAULTS（代码里的默认值）
 
 ---
 
-## 7. 每天自动运行
+## 8. 每天自动运行
 
-### 7.1 方式 A：GitHub Actions（推荐，电脑不用开机）
+### 8.1 方式 A：GitHub Actions（推荐，电脑不用开机）
 
 仓库里已经带了一份 `.github/workflows/daily.yml`：**云端每天 07:30（北京时间）跑一次**，推送照发，日报和去重台账自动提交回仓库。免费、不用挂机、不受「笔记本睡眠 / 关机 / 未登录」影响。
 
@@ -451,7 +506,7 @@ push serverchan   OK   code=0
 push results: [{"channel": "serverchan", "ok": true, "detail": "code=0 "}]
 ```
 
-`code=0` 是 Server酱的成功码。取日志的办法见 [第 11.2 节](#11-维护备忘) —— `GET .../actions/jobs/<id>/logs` 会 302 到 blob 存储，**直接跟会 401**（因为 `Authorization` 被一起转发，把目标的 SAS 令牌顶掉了），要手动跟重定向且不带授权头。
+`code=0` 是 Server酱的成功码。取日志的办法见 [第 12.2 节](#12-维护备忘) —— `GET .../actions/jobs/<id>/logs` 会 302 到 blob 存储，**直接跟会 401**（因为 `Authorization` 被一起转发，把目标的 SAS 令牌顶掉了），要手动跟重定向且不带授权头。
 
 #### 状态怎么跨运行存活
 
@@ -475,7 +530,7 @@ Actions 每次运行都是**全新容器**，`state/seen.sqlite`（「已读台�
 | `reports/*.md` 会公开 | 内容是论文标题、DOI、作者、摘要片段——都是公开学术信息。但它同时暴露了**你的研究方向和关键词**，介意就把 `reports/` 也 gitignore 掉 |
 | `keep_days: 365` | 自动清理一年前的日报（`.md` 和 `.json` 都清），仓库体积不会无限增长 |
 
-### 7.2 方式 B：Windows 计划任务
+### 8.2 方式 B：Windows 计划任务
 
 先注册（在**要运行它的这台电脑上**执行）：
 
@@ -540,11 +595,11 @@ powercfg /setactive SCHEME_CURRENT
 
 第 2 步不能省——Windows 默认「交流电启用 / 电池禁用」唤醒定时器，不然拔了电源照样叫不醒。代价是 07:30 电脑会短暂亮起或转一下风扇；电脑完全关机时仍无法唤醒（只有极少数机型支持关机定时开机）。
 
-### 7.3 方式 C：开机自启
+### 8.3 方式 C：开机自启
 
 把 `run_daily.cmd` 的快捷方式放进启动文件夹：`Win+R` → `shell:startup` → 把快捷方式粘进去。缺点是每次开机才跑，不是固定时间。
 
-### 7.4 三种方式怎么选
+### 8.4 三种方式怎么选
 
 | | GitHub Actions | Windows 计划任务 | 开机自启 |
 |---|---|---|---|
@@ -557,7 +612,7 @@ powercfg /setactive SCHEME_CURRENT
 
 ---
 
-## 8. 换电脑迁移
+## 9. 换电脑迁移
 
 **代码可以直接复制**（纯标准库、无绝对路径、无注册表依赖），但有 **1 件事必须先删、2 件事必须重做、1 件事必须决策**。
 
@@ -600,13 +655,13 @@ E:\apps\journal-alert\run_daily.cmd --doctor
 
 ### 第 4 步：重新注册计划任务（必须重做）
 
-**计划任务存在每台电脑自己的任务计划程序里，不会跟着文件夹走。** 在**新电脑上**按 [第 7.2 节](#7-每天自动运行) 的命令重跑一次。
+**计划任务存在每台电脑自己的任务计划程序里，不会跟着文件夹走。** 在**新电脑上**按 [第 8.2 节](#8-每天自动运行) 的命令重跑一次。
 
 > 如果新电脑就是用 GitHub Actions，这一步可以跳过——那边与机器无关。
 
 ### 第 5 步：推送密钥
 
-密钥**跟人不跟机器**，同一串 SendKey 在新电脑上照样推到你的微信。照 [第 6 节](#6-微信推送) 填一次 `config.local.json`，然后：
+密钥**跟人不跟机器**，同一串 SendKey 在新电脑上照样推到你的微信。照 [第 7 节](#7-微信推送) 填一次 `config.local.json`，然后：
 
 ```powershell
 E:\apps\journal-alert\run_daily.cmd --test-push
@@ -652,7 +707,7 @@ Start-ScheduledTask -TaskName "JournalAlertDaily"
 
 ---
 
-## 9. 数据源
+## 10. 数据源
 
 **结论：16 本刊里 15 本有可用 RSS；ACS 的 ES&T 已停用 RSS，由 OpenAlex + Crossref 双保险；每一本刊都至少有两个独立数据源覆盖，所以任何单一源失效都不会漏掉整本刊。**
 
@@ -693,20 +748,20 @@ Start-ScheduledTask -TaskName "JournalAlertDaily"
 
 ---
 
-## 10. 故障排查
+## 11. 故障排查
 
 | 现象 | 原因与处理 |
 |---|---|
 | 报告里「数据源状态」出现 ❌ | 正常现象，单个源失败不影响整体。常见原因：出版商反爬（ACS/IOP/ScienceDirect 常见 403）、对方临时故障。会靠 OpenAlex/Crossref 兜底 |
 | 一次运行时间很长 | OpenAlex 大刊（如 Science、Nature Communications）返回条数多，加上失败重试会慢。可以 `--sources rss` 只用 RSS 提速，或在 `window.max_items_per_journal` 调小 |
-| 推送没收到 | 看 `logs/jalert-YYYY-MM.log` 里 `push ... FAIL` 那行。最常见是 SendKey 填错，或微信没关注服务号。详见 [第 6.4 节](#6-微信推送) |
+| 推送没收到 | 看 `logs/jalert-YYYY-MM.log` 里 `push ... FAIL` 那行。最常见是 SendKey 填错，或微信没关注服务号。详见 [第 7.4 节](#7-微信推送) |
 | 报告里空空的 | 看日志里 `keyword matched X/Y`。若 Y 很大而 X=0，说明关键词 `terms` 没覆盖到实际用词，去 `config.json` 加词 |
 | 想重看某天 | 直接打开 `reports\YYYY-MM-DD.md`；历史台账查 `state\seen.sqlite` 的 `articles` 表 |
 | 想重新推送一次 | 删掉 `state/seen.sqlite` 里对应行即可（或简单删库重来，会重新报告时间窗内所有文献） |
 | `runner.log` 里写 `no usable Python 3 found` | 装 Python 并勾选 `Add python.exe to PATH`，或让 DSH 装一份运行时 |
 | `--doctor` 显示写入权限不可写 | 别放在 `C:\Program Files` 等受保护目录，换 `D:\`、`E:\` 或用户目录 |
 | `--doctor` 显示海外站点全部 FAIL | 这台机器的网络策略挡住了 Python。检查代理设置与安全软件白名单 |
-| 计划任务显示「就绪」但从没执行过 | 检查是否勾了「只在交流电下运行」；用 [第 7.2 节](#7-每天自动运行) 的 `$settings` 重注册一次 |
+| 计划任务显示「就绪」但从没执行过 | 检查是否勾了「只在交流电下运行」；用 [第 8.2 节](#8-每天自动运行) 的 `$settings` 重注册一次 |
 | 日报是空的（刚换电脑） | 正常——`state/` 是从旧电脑复制过来的，所有文献都算已读。删掉 `state\seen.sqlite` 再跑一次 |
 | 想换回全新开始 | 删掉 `state\` 和 `reports\` 整个目录，下次运行会重新报告时间窗内全部文献 |
 | 云端日报文件名日期差一天 | 说明 `TZ` 没生效。确认工作流的 job 级 `env:` 里有 `TZ: Asia/Shanghai` |
@@ -715,11 +770,11 @@ Start-ScheduledTask -TaskName "JournalAlertDaily"
 
 ---
 
-## 11. 维护备忘
+## 12. 维护备忘
 
 本节是给**本机这个工作副本**用的运维记录，普通使用者可以跳过。
 
-### 11.1 现状（2026-10-05）
+### 12.1 现状（2026-10-06）
 
 | 项目 | 状态 |
 |---|---|
@@ -728,34 +783,40 @@ Start-ScheduledTask -TaskName "JournalAlertDaily"
 | 仓库 Secret | `SERVERCHAN_SENDKEY` 已建 |
 | 仓库变量 | `JALERT_MAILTO = pkui1mpression@gmail.com` |
 | 推送验证 | ✅ run #2 日志 `push serverchan OK code=0` |
+| 日报格式 | 2026-10-06 起头部带 YAML 属性，数据源状态段压成一行摘要（`output.source_status = summary`）；历史三篇已按同格式回填 |
+| 日报库 | `D:\journal-alert-reports\` —— 只镜像 `reports/` 的 sparse clone，作 Obsidian 库；双击库内 `同步.cmd` 拉最新 |
 
 **旧提交里的明文 SendKey**：历史提交 `4d6a1224` 的 `config.json` 里有明文 SendKey，**公开仓库中仍可被未登录访问**——`--force` 只是让它脱离 `main` 分支，Git 对象本身还在，按 SHA 直取照样能读到。唯一可靠的补救是**把该密钥作废（轮换）**，已完成。要真正清掉旧对象只能删库重建（需 PAT 带 `delete_repo` 权限）或找 GitHub Support。
 
-### 11.2 本机推拉代码：走 REST API，不走 git
+### 12.2 本机推拉代码：拉取用 git，推送走 REST API
 
-本机到 `github.com:443` 的 git 通道不通：
+**2026-10-06 更正**：早先记的「git 通道完全不通」只对了一半。
 
-| 路径 | 实测结果 |
+| 操作 | 实测结果 |
 |---|---|
-| 走代理 `git ls-remote` | `CONNECT tunnel failed, response 502` |
-| 绕过代理直连 | `Failed to connect to github.com:443 after 21016 ms` |
-| `https://api.github.com`（直连） | **200 OK** ✅ |
-| `https://raw.githubusercontent.com` | 不通，读文件一律改走 contents API |
+| `git fetch origin` / `git ls-remote`（走代理） | ✅ 通，几秒返回 |
+| `git push`（走代理） | ❌ 认证已通过（`HTTP 200`），但**发送数据阶段进程被 SIGTERM 掐断**，远端 ref 不动 |
+| `https://api.github.com`（直连） | ✅ 200 OK |
 
-所以 `git push` / `git fetch` 全部不可用，改走 **GitHub Git Data REST API**，脚本在 `.workbuddy/`：
+所以分成两条路：**拉取用 git**（快、完整、不怕签名提交），**推送仍走 REST API**。
 
 | 脚本 | 作用 |
 |---|---|
-| `.workbuddy/push-to-github.sh` | 统一入口。直接跑 = 推送；`... pull` = 反向同步 |
-| `.workbuddy/api-push.py` | 把本地提交**原样重建**到远端（含作者、时间、完整提交信息），force 更新 ref |
-| `.workbuddy/api-pull.py` | 反方向做**真 fetch**：递归补齐缺失对象，再移动分支指针、同步工作区 |
+| `.workbuddy/push-to-github.sh` | 统一入口。直接跑 = 推送 |
+| `.workbuddy/api-push.py` | 把本地提交**原样重建**到远端（含作者、时间、完整提交信息） |
+| `.workbuddy/api-pull.py` | **已不推荐**，拉取改用 git（原因见下方坑 6） |
 | `.workbuddy/check-ci.py` | 验收 Actions 运行：列步骤结论 + 取日志关键行。**无 token 也能判定成败** |
 
 推送时逐层校验 sha——blob、tree、commit、ref 全部相等才收工。看到 `tree ... [OK]` 和末尾 `完全一致 : YES` 就是成功。
 
-日常顺序：**先 pull → 改代码 → 再 push**。CI 每次都会往 `main` 追加一个 `chore(state): …` 提交，所以本地副本会随时落后于远端；**不要在分叉状态下强推**，那会冲掉云端积累的去重台账。
+**日常顺序：先同步 → 改代码 → 再推送。**
 
-> 如果你哪天在**自己的终端**里用 git（不经过 WorkBuddy 的代理），`github.com` 很可能是通的——那就直接用 `git pull` / `git push`，不必绕 API。
+```bash
+git fetch origin && git rebase origin/main   # 拉取；CI 每天都会往 main 追加一个 chore(state) 提交
+bash .workbuddy/push-to-github.sh            # 推送
+```
+
+**不要在分叉状态下强推**，那会冲掉云端积累的去重台账。
 
 **踩过的坑（都已修进脚本）**
 
@@ -764,10 +825,12 @@ Start-ScheduledTask -TaskName "JournalAlertDaily"
 3. 全量重建时**根提交不能挂 parent**，否则整条链 sha 全变。
 4. 路径含中文时 `git diff-tree --name-status` 要加 `-z`，否则路径被转义，`rev-parse` 报 not exist。
 5. `api-pull.py` 会 `git reset --hard`，工作区里**未提交**的改动会被冲掉（已加保护：有未提交的已跟踪改动时直接拒绝执行）。
+6. **`api-pull.py` 重建不了网页上编辑出来的提交**。GitHub 网页改文件会产生**签名提交**（`verification.verified = true`，对象里多一段 `gpgsig` 头），而且 author 是 `+0800`、committer 是 GitHub 的 `+0000`——两个变量叠加，重建必然 sha 不符。作者/committer 偏移已改成分别试，签名那段仍是死结。**既然 `git fetch` 能用，就别跟它较劲了。**
+7. `sparse-checkout` 的 **cone 模式总是保留根目录文件**。想只留 `reports/` 必须 `git config core.sparseCheckoutCone false` 再手写 `.git/info/sparse-checkout`。另外在 Git Bash 里 `sparse-checkout set /reports/` 会被 MSYS 当成绝对路径展开，务必用规则文件那套写法。
 
 详细的排查与用法见本机技能 `~/.workbuddy/skills/github-push-via-api/`。
 
-### 11.3 取 Actions 日志
+### 12.3 取 Actions 日志
 
 ```python
 import urllib.request, urllib.error
