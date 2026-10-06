@@ -88,6 +88,12 @@ def blob_sha(data: bytes) -> str:
 def main() -> int:
     list_only = "--list" in sys.argv
 
+    if "--stamp" in sys.argv:
+        # 供计划任务用（auto_sync.cmd 会带上它）。时间戳由本脚本打，而不是让批处理
+        # 用 echo 打 —— 那样日志里就会混进两种编码：批处理 echo 走 OEM 代码页，
+        # 本脚本输出走 Python 自己的编码，混在一起两种解码都读不出来。
+        say("===== " + time.strftime("%Y-%m-%d %H:%M:%S") + " =====")
+
     say(f"仓库：{REPO}")
     say(f"目标：{DEST}")
     say()

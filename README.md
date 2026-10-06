@@ -158,7 +158,7 @@ run_daily.cmd --rerender
 | `reports/YYYY-MM-DD.json` | 同日结构化数据（可再导入 Excel/Obsidian） |
 | `state/daily/YYYY-MM-DD.json` | 当日报表快照（同一天多次运行会合并，不会互相覆盖） |
 | `state/seen.sqlite` | 历史库：`articles` 表是累积文献台账，`runs` 表是运行日志 |
-| `logs/` | 运行日志 |
+| `logs/` | 运行日志（日报库那边另有一份 `.sync.log`） |
 | `run_daily.cmd` | 启动脚本（自动寻找可用的 Python） |
 | `make_package.py` | 打包成可移植 zip，供复制到另一台电脑 |
 | `.github/workflows/daily.yml` | 云端定时任务定义（每天 07:30 东八区跑 `run.py --once`） |
@@ -217,6 +217,7 @@ git read-tree -mu HEAD
 | 文件 | 作用 |
 |---|---|
 | `同步.cmd` | 双击运行。自己找 Python（PATH → 托管安装 → 版本目录），找到后调 `sync_reports.py` |
+| `auto_sync.cmd` | 给[计划任务](#53-自动同步windows-计划任务)用。不发 `pause`，输出写进 `.sync.log` |
 | `sync_reports.py` | 同步引擎。用 GitHub API 列出 `reports/`，逐个比对 git blob sha，只写有变化的文件 |
 
 > `同步.cmd` 里**一个中文都没有**，这不是洁癖：批处理文件按系统 OEM 代码页解析，
@@ -226,8 +227,9 @@ git read-tree -mu HEAD
 只用 Python 标准库，不需要 pip 装任何东西。命令行的用法：
 
 ```bash
-python sync_reports.py           # 同步（幂等：没更新时一个文件都不碰）
-python sync_reports.py --list    # 只看远端有哪些日报，不下载
+python sync_reports.py            # 同步（幂等：没更新时一个文件都不碰）
+python sync_reports.py --list     # 只看远端有哪些日报，不下载
+python sync_reports.py --stamp    # 额外打一行运行时间戳（计划任务用）
 ```
 
 > 为什么不用 git 同步：本机到 `github.com:443` 的通道不稳定（代理 502、TLS 握手失败、
@@ -237,7 +239,60 @@ python sync_reports.py --list    # 只看远端有哪些日报，不下载
 > 脚本按 **git blob 的 sha** 判断是否需要更新，而不是比时间戳或文件大小。这样没更新的日子
 > 文件 mtime 不变，Obsidian 不会白重载一遍；内容对不上但只是行尾差异时也只静默修正行尾。
 
-### 5.3 日报头部的属性
+### 5.3 自动同步（Windows 计划任务）
+
+不想每天手动双击的话，挂一个计划任务。本机已注册：
+
+| 项目 | 值 |
+|---|---|
+| 任务名 | `JournalAlertObsidianSync` |
+| 触发时刻 | 每天 **08:00 / 11:00 / 14:00 / 17:00 / 20:00**（共 5 次） |
+| 执行 | `cmd.exe /c "D:\journal-alert-reports\auto_sync.cmd"` |
+| 日志 | 库根目录 `.sync.log`（**以点开头，Obsidian 不会显示它**） |
+| 配置备份 | `C:\Users\wangs\JournalAlertObsidianSync-task-backup.xml` |
+
+**为什么要跑 5 次**：云端 CI 的 cron 定的是 07:30，但 GitHub 的定时任务在高负载时会明显延迟
+—— 实测有一天的 `schedule` 事件是 **11:16** 才落地的。只跑一次的话，那天就会整天看不到新日报。
+同步脚本幂等（没更新时一个文件都不碰），多跑几次的成本约等于零。
+
+**几个刻意的选择**：
+
+* `StartWhenAvailable = true` —— 该跑的时刻电脑关着，开机后会补跑一次。
+* `DisallowStartIfOnBatteries = false` —— 笔记本用电池时也照跑（漏了这个设置就不会执行）。
+* `LogonType = InteractiveToken` —— 只在登录状态下运行，**不存密码**。
+* 任务不会跟着文件夹走。换了电脑或挪了库的位置，得重新注册一次（见下）。
+
+**常用操作**（本机 `schtasks.exe` 被安全策略拉黑，只能用 PowerShell 的 ScheduledTasks 模块）：
+
+```powershell
+# 看状态 / 下次运行时间
+Get-ScheduledTaskInfo -TaskName JournalAlertObsidianSync
+
+# 立刻跑一次
+Start-ScheduledTask -TaskName JournalAlertObsidianSync
+
+# 临时停用 / 重新启用
+Disable-ScheduledTask -TaskName JournalAlertObsidianSync
+Enable-ScheduledTask  -TaskName JournalAlertObsidianSync
+
+# 彻底删掉
+Unregister-ScheduledTask -TaskName JournalAlertObsidianSync -Confirm:$false
+
+# 在新电脑上重建（先改 $vault，并确认 auto_sync.cmd 里的 Python 路径）
+$vault = 'D:\journal-alert-reports'
+$triggers = '08:00','11:00','14:00','17:00','20:00' | ForEach-Object { New-ScheduledTaskTrigger -Daily -At $_ }
+Register-ScheduledTask -TaskName JournalAlertObsidianSync `
+  -Action (New-ScheduledTaskAction -Execute 'C:\Windows\System32\cmd.exe' -Argument ('/c "{0}\auto_sync.cmd"' -f $vault) -WorkingDirectory $vault) `
+  -Trigger $triggers `
+  -Principal (New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Limited) `
+  -Settings (New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -MultipleInstances IgnoreNew)
+```
+
+> `auto_sync.cmd` 与 `同步.cmd` 的分工：前者给计划任务用（**没有 `pause`**，否则任务会永远挂住；
+> 输出写进 `.sync.log`），后者给人双击用（有 `pause`，能在窗口里看结果）。两个文件都放在
+> `tools/obsidian-sync/` 下，复制到库根目录使用。
+
+### 5.4 日报头部的属性
 
 由 `output.frontmatter` 控制（默认开）：
 
@@ -817,7 +872,7 @@ Start-ScheduledTask -TaskName "JournalAlertDaily"
 | 仓库变量 | `JALERT_MAILTO = pkui1mpression@gmail.com` |
 | 推送验证 | ✅ run #2 日志 `push serverchan OK code=0` |
 | 日报格式 | 2026-10-06 起头部带 YAML 属性，数据源状态段压成一行摘要（`output.source_status = summary`）；历史三篇已按同格式回填 |
-| 日报库 | `D:\journal-alert-reports\` —— 只镜像 `reports/` 的 Obsidian 库（**不带 git**）；双击库内 `同步.cmd` 拉最新，同步走 `api.github.com` |
+| 日报库 | `D:\journal-alert-reports\` —— 只镜像 `reports/` 的 Obsidian 库（**不带 git**）；同步走 `api.github.com`，双击 `同步.cmd` 或由计划任务 `JournalAlertObsidianSync` 每天跑 5 次（见 [第 5.3 节](#53-自动同步windows-计划任务)） |
 
 **旧提交里的明文 SendKey**：历史提交 `4d6a1224` 的 `config.json` 里有明文 SendKey，**公开仓库中仍可被未登录访问**——`--force` 只是让它脱离 `main` 分支，Git 对象本身还在，按 SHA 直取照样能读到。唯一可靠的补救是**把该密钥作废（轮换）**，已完成。要真正清掉旧对象只能删库重建（需 PAT 带 `delete_repo` 权限）或找 GitHub Support。
 
