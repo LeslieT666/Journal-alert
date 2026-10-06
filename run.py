@@ -172,7 +172,7 @@ def rerender(args, cfg, log, day, tiers, day_snapshot, report_path) -> int:
         entries_total=entries_total,
         all_entries=day_entries,
     )
-    report_path.write_text(markdown, encoding="utf-8")
+    report_path.write_text(markdown, encoding="utf-8", newline="\n")
     log.info("report re-rendered from snapshot: %s (%d entries)", report_path, len(day_entries))
     if args.print_report:
         print("\n" + markdown)
@@ -264,7 +264,7 @@ def doctor(cfg: dict, log) -> int:
         try:
             target.mkdir(parents=True, exist_ok=True)
             probe = target / ".write-test"
-            probe.write_text("ok", encoding="utf-8")
+            probe.write_text("ok", encoding="utf-8", newline="\n")
             probe.unlink()
             print(f"写入权限       : {label} 可写  {target}")
         except OSError as exc:
@@ -429,7 +429,9 @@ def run(args: argparse.Namespace) -> int:
                 "statuses": statuses,
             }
             day_snapshot.write_text(
-                json.dumps(snapshot_payload, ensure_ascii=False, indent=2), encoding="utf-8"
+                json.dumps(snapshot_payload, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+                newline="\n",
             )
 
         day_entries = sort_entries(hydrate_entries(merged_records), tiers, day)
@@ -452,12 +454,14 @@ def run(args: argparse.Namespace) -> int:
         if args.dry_run or args.print_report:
             print("\n" + markdown)
         if not args.dry_run:
-            report_path.write_text(markdown, encoding="utf-8")
+            report_path.write_text(markdown, encoding="utf-8", newline="\n")
             log.info("report written: %s", report_path)
             if cfg.get("output", {}).get("write_json_snapshot", True):
                 snapshot_payload["generated"] = generated_at
                 (reports_dir / f"{day}.json").write_text(
-                    json.dumps(snapshot_payload, ensure_ascii=False, indent=2), encoding="utf-8"
+                    json.dumps(snapshot_payload, ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                    newline="\n",
                 )
 
         pushed = 0

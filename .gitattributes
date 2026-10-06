@@ -1,0 +1,35 @@
+# ---------------------------------------------------------------------------
+# 统一行尾，别让「谁在哪台机器上跑」决定文件长什么样。
+#
+# 背景：日报由 run.py 用 Python 写出。Path.write_text() 的 newline 默认跟随
+# 系统，于是 Windows 本机跑出 CRLF、GitHub Actions（Linux）跑出 LF，
+# 同一个仓库里行尾来回摆动，每次运行都会产生一整篇的假 diff。
+# 用 Obsidian 之类的工具看日报时，它还会按自己的习惯再改一遍行尾，
+# 让工作区长期处于「已修改」状态，最后把 git merge 顶死。
+#
+# 这里统一声明成 LF（Windows 批处理除外），它比 core.autocrlf 优先级高，
+# 所以不管本机怎么配都按这套来。
+# ---------------------------------------------------------------------------
+
+* text=auto
+
+*.md   text eol=lf
+*.py   text eol=lf
+*.json text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.txt  text eol=lf
+.gitignore    text eol=lf
+.gitattributes text eol=lf
+LICENSE       text eol=lf
+
+# Windows 批处理必须是 CRLF（不过脚本自己也不依赖它，纯粹为了规范）
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# 二进制，一个字都不要动
+*.sqlite  binary
+*.sqlite3 binary
+*.png     binary
+*.jpg     binary
+*.zip     binary
