@@ -55,6 +55,13 @@ DEFAULTS: dict = {
         "max_entries": 0,
         "open_after_run": False,
         "write_json_snapshot": True,
+        # "full"  = the whole per-source table (best for debugging a broken feed)
+        # "summary" = one line when healthy, a short table only for failures
+        # "none"  = never mention data sources in the report
+        "source_status": "full",
+        # YAML front matter on top of each report, so Obsidian properties and
+        # Dataview can query it. Skip it if you only ever read the raw Markdown.
+        "frontmatter": True,
     },
     "keywords": [],
     "exclude_terms": [],

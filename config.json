@@ -22,7 +22,9 @@
     "keep_days": 365,
     "max_entries": 10,
     "open_after_run": false,
-    "write_json_snapshot": true
+    "write_json_snapshot": true,
+    "source_status": "summary",
+    "frontmatter": true
   },
   "keywords": [
     {

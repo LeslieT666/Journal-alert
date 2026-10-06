@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import date as _date
 
 from .score import TIER_TITLES, tier_of
@@ -36,6 +37,90 @@ def _truncate(text: str, limit: int) -> str:
     return cut + " …"
 
 
+def _frontmatter(
+    *,
+    day: str,
+    cfg: dict,
+    counts: dict,
+    statuses: list[dict],
+    fetched_total: int,
+    matched_total: int,
+    new_count: int,
+    listed: int,
+    generated_at: str,
+) -> list[str]:
+    """YAML front matter, so Obsidian properties and Dataview can query reports.
+
+    Lists are emitted with ``json.dumps`` - JSON is a subset of YAML, so quoting
+    stays correct even when a keyword label contains a colon or a quote.
+    """
+    topics = [k.get("label", "") for k in cfg.get("keywords", [])]
+    journals = {s["journal"] for s in statuses}
+    failed = [s for s in statuses if not s["ok"]]
+    return [
+        "---",
+        f"date: {day}",
+        f"generated: {generated_at}",
+        f"window_days: {cfg.get('window', {}).get('days', 3)}",
+        f"fetched: {fetched_total}",
+        f"matched: {matched_total}",
+        f"new_count: {new_count}",
+        f"listed: {listed}",
+        f"must_read: {counts['must_read']}",
+        f"worth_reading: {counts['worth_reading']}",
+        f"other: {counts['other']}",
+        f"journals: {len(journals)}",
+        f"sources_failed: {len(failed)}",
+        f"topics: {json.dumps(topics, ensure_ascii=False)}",
+        "tags: [journal-alert]",
+        "---",
+        "",
+    ]
+
+
+def _source_status_section(statuses: list[dict], mode: str) -> list[str]:
+    """Render the data-source footer: ``full`` table, ``summary``, or nothing."""
+    failed = [s for s in statuses if not s["ok"]]
+    if mode == "none":
+        return []
+    if mode == "summary":
+        # Only interesting when something broke - otherwise it is one quiet line
+        # at the bottom instead of a 45-row table on every single report.
+        if not statuses:
+            return []
+        journals = len({s["journal"] for s in statuses})
+        if not failed:
+            return [f"> ✅ 数据源：{journals} 本刊、{len(statuses)} 条通道全部正常。", ""]
+        out = [
+            "## 数据源状态",
+            "",
+            f"> ⚠️ {journals} 本刊中 **{len(failed)}** 条通道本次抓取失败，其余正常；失败不影响其他来源。",
+            "",
+            "| 期刊 | 数据源 | 条数 | 说明 |",
+            "|---|---|---|---|",
+        ]
+        for status in failed:
+            note = (status.get("note") or "").replace("|", "/")
+            out.append(f"| {status['journal']} | {status['source']} | {status['items']} | {note} |")
+        out.append("")
+        return out
+    # full
+    out = ["## 数据源状态", "", "| 期刊 | 数据源 | 状态 | 条数 | 说明 |", "|---|---|---|---|---|"]
+    for status in statuses:
+        state = "✅" if status["ok"] else "❌"
+        note = (status.get("note") or "").replace("|", "/")
+        out.append(
+            f"| {status['journal']} | {status['source']} | {state} | {status['items']} | {note} |"
+        )
+    out.append("")
+    if failed:
+        out.append(f"⚠️ 有 {len(failed)} 个数据源本次抓取失败，上面表格已标明原因；失败不影响其他来源。")
+    else:
+        out.append("✅ 全部数据源抓取正常。")
+    out.append("")
+    return out
+
+
 def build_markdown(
     *,
     day: str,
@@ -61,6 +146,20 @@ def build_markdown(
 
     keyword_labels = " / ".join(k.get("label", "") for k in cfg.get("keywords", []))
     lines: list[str] = []
+    if cfg.get("output", {}).get("frontmatter", True):
+        lines.extend(
+            _frontmatter(
+                day=day,
+                cfg=cfg,
+                counts=counts,
+                statuses=statuses,
+                fetched_total=fetched_total,
+                matched_total=matched_total,
+                new_count=new_count,
+                listed=len(entries),
+                generated_at=generated_at,
+            )
+        )
     lines.append(f"# {project} · {day}")
     lines.append("")
     lines.append(
@@ -122,23 +221,10 @@ def build_markdown(
         lines.append("---")
         lines.append("")
 
-    lines.append("## 数据源状态")
-    lines.append("")
-    lines.append("| 期刊 | 数据源 | 状态 | 条数 | 说明 |")
-    lines.append("|---|---|---|---|---|")
-    for status in statuses:
-        state = "✅" if status["ok"] else "❌"
-        note = (status.get("note") or "").replace("|", "/")
-        lines.append(
-            f"| {status['journal']} | {status['source']} | {state} | {status['items']} | {note} |"
-        )
-    failed = [s for s in statuses if not s["ok"]]
-    lines.append("")
-    if failed:
-        lines.append(f"⚠️ 有 {len(failed)} 个数据源本次抓取失败，上面表格已标明原因；失败不影响其他来源。")
-    else:
-        lines.append("✅ 全部数据源抓取正常。")
-    lines.append("")
+    mode = str(cfg.get("output", {}).get("source_status", "full")).lower()
+    if mode not in ("full", "summary", "none"):
+        mode = "full"
+    lines.extend(_source_status_section(statuses, mode))
     lines.append("---")
     lines.append("")
     lines.append(f"*由 journal-alert 自动生成 · {generated_at} · 历史库 `state/seen.sqlite`*")
