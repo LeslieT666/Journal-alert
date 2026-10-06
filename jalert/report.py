@@ -242,16 +242,24 @@ def build_digest(
     max_items: int,
     max_chars: int,
 ) -> tuple[str, str]:
-    """Return ``(title, markdown_body)`` for a push notification."""
+    """Return ``(title, markdown_body)`` for a push notification.
+
+    Layout rules - both are deliberate, and both have bitten us:
+
+    * one blank line **between** entries, so each item is its own paragraph.
+      Without it Markdown runs every entry together into a single block and
+      WeChat shows one long line of concatenated text.
+    * two trailing spaces **inside** an entry, which is Markdown's hard line
+      break. A bare newline is a "soft" break and most renderers collapse it
+      into a space, which would glue the title to the journal/date line.
+    """
     project = cfg.get("project", {}).get("name", "文献日报")
     must = [e for e in entries if tier_of(e["scored"].score, cfg.get("tiers", {})) == "must_read"]
     must_ids = {id(e) for e in must}
     rest = [e for e in entries if id(e) not in must_ids]
     title = f"{project} {day}：新增 {len(entries)} 篇，必读 {len(must)} 篇"
-    lines = [
-        f"抓取 {fetched_total} 篇 · 命中 {matched_total} 篇 · 新增 **{len(entries)}** 篇",
-        "",
-    ]
+
+    blocks: list[str] = []
     shown = 0
     for entry in (must + rest):
         if shown >= max_items:
@@ -261,15 +269,24 @@ def build_digest(
         star = "🔥" if id(entry) in must_ids else "·"
         hits = "、".join(entry["scored"].labels)
         if url:
-            lines.append(f"{star} [{_truncate(item.title, 120)}]({url})")
+            head = f"{star} [{_truncate(item.title, 120)}]({url})"
         else:
-            lines.append(f"{star} {_truncate(item.title, 120)}")
-        lines.append(f"　　{item.journal} · {item.date} · 匹配 {hits}")
+            head = f"{star} {_truncate(item.title, 120)}"
+        meta = f"　　{item.journal} · {item.date} · 匹配 {hits}"
+        blocks.append(f"{head}  \n{meta}")
         shown += 1
+
+    lines = [f"抓取 {fetched_total} 篇 · 命中 {matched_total} 篇 · 新增 **{len(entries)}** 篇"]
+    for block in blocks:
+        lines.append("")
+        lines.append(block)
     if len(entries) > shown:
         lines.append("")
         lines.append(f"…… 其余 {len(entries) - shown} 篇见本地日报。")
+
     body = "\n".join(lines)
     if len(body) > max_chars:
-        body = body[:max_chars].rsplit("\n", 1)[0] + "\n\n……（已截断，完整内容见本地 Markdown 日报）"
+        # Cut back to a paragraph boundary so we never truncate mid-entry.
+        cut = body[:max_chars].rsplit("\n\n", 1)[0] or body[:max_chars].rsplit("\n", 1)[0]
+        body = cut + "\n\n……（已截断，完整内容见本地 Markdown 日报）"
     return title, body
