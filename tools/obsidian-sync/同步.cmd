@@ -5,7 +5,7 @@ cd /d "%~dp0"
 rem ---------------------------------------------------------------------------
 rem  Double-click to pull the latest daily reports into this Obsidian vault.
 rem
-rem  All Chinese output lives in 同步.py - Python prints Unicode correctly to the
+rem  All Chinese output lives in sync_reports.py - Python prints Unicode correctly to the
 rem  Windows console. This wrapper stays pure ASCII on purpose: a .bat file is
 rem  parsed with the OEM code page, so UTF-8 Chinese in here breaks the parser.
 rem  Keep this file saved as GBK anyway, because the script name below is Chinese.
@@ -34,7 +34,7 @@ echo [ERROR] Python not found. Install Python 3.10+ and run this again.
 goto end
 
 :run
-"%PY%" "%~dp0同步.py" %*
+"%PY%" "%~dp0sync_reports.py" %*
 if errorlevel 1 echo [ERROR] Sync did not complete - see the message above.
 
 :end

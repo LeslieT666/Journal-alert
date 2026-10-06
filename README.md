@@ -202,9 +202,9 @@ git read-tree -mu HEAD
 
 **方式 B：只镜像文件，不用 git**（git 通道被掐时用，本机走的就是这条）
 
-先用 `git init` 建一个空目录，或者干脆什么都不用建 —— 同步脚本会自己创建 `reports/`。适合
-`git push` / `git fetch` 走不通、但 `api.github.com` 可达的环境（见 [第 12.2 节](#122-本机推拉代码拉取用-git推送走-rest-api)）。
-仓库是公开的，因此**不需要任何 token**。
+新建一个空文件夹当库就行（不用装 git，也不用 `git init`），同步脚本会自己创建 `reports/`。
+适合 `git fetch` 走不通、但 `api.github.com` 可达的环境（见 [第 12.2 节](#122-本机推拉代码拉取用-git推送走-rest-api)）。
+仓库是公开的，因此**不需要任何 token**，也就不必担心密钥存在哪。
 
 两种方式都用 Obsidian 的「打开文件夹作为库」选中该目录。
 
@@ -216,14 +216,18 @@ git read-tree -mu HEAD
 
 | 文件 | 作用 |
 |---|---|
-| `同步.cmd` | 双击运行。自己找 Python（PATH → 托管安装 → 版本目录），找到后调 `同步.py` |
-| `同步.py` | 同步引擎。用 GitHub API 列出 `reports/`，逐个比对 git blob sha，只写有变化的文件 |
+| `同步.cmd` | 双击运行。自己找 Python（PATH → 托管安装 → 版本目录），找到后调 `sync_reports.py` |
+| `sync_reports.py` | 同步引擎。用 GitHub API 列出 `reports/`，逐个比对 git blob sha，只写有变化的文件 |
+
+> `同步.cmd` 里**一个中文都没有**，这不是洁癖：批处理文件按系统 OEM 代码页解析，
+> 混进中文就可能在别的机器上报「不是内部或外部命令」。所有中文提示都放在 Python
+> 侧输出，脚本名用 ASCII，这样这两个文件放哪台 Windows 上都能跑。
 
 只用 Python 标准库，不需要 pip 装任何东西。命令行的用法：
 
 ```bash
-python 同步.py            # 同步（幂等：没更新时一个文件都不碰）
-python 同步.py --list     # 只看远端有哪些日报，不下载
+python sync_reports.py           # 同步（幂等：没更新时一个文件都不碰）
+python sync_reports.py --list    # 只看远端有哪些日报，不下载
 ```
 
 > 为什么不用 git 同步：本机到 `github.com:443` 的通道不稳定（代理 502、TLS 握手失败、
@@ -813,7 +817,7 @@ Start-ScheduledTask -TaskName "JournalAlertDaily"
 | 仓库变量 | `JALERT_MAILTO = pkui1mpression@gmail.com` |
 | 推送验证 | ✅ run #2 日志 `push serverchan OK code=0` |
 | 日报格式 | 2026-10-06 起头部带 YAML 属性，数据源状态段压成一行摘要（`output.source_status = summary`）；历史三篇已按同格式回填 |
-| 日报库 | `D:\journal-alert-reports\` —— 只镜像 `reports/` 的 sparse clone，作 Obsidian 库；双击库内 `同步.cmd` 拉最新 |
+| 日报库 | `D:\journal-alert-reports\` —— 只镜像 `reports/` 的 Obsidian 库（**不带 git**）；双击库内 `同步.cmd` 拉最新，同步走 `api.github.com` |
 
 **旧提交里的明文 SendKey**：历史提交 `4d6a1224` 的 `config.json` 里有明文 SendKey，**公开仓库中仍可被未登录访问**——`--force` 只是让它脱离 `main` 分支，Git 对象本身还在，按 SHA 直取照样能读到。唯一可靠的补救是**把该密钥作废（轮换）**，已完成。要真正清掉旧对象只能删库重建（需 PAT 带 `delete_repo` 权限）或找 GitHub Support。
 

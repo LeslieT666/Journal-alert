@@ -40,10 +40,11 @@ RETRIES = 3
 HERE = Path(__file__).resolve().parent
 DEST = HERE / FOLDER
 
-try:
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-except Exception:
-    pass
+# 故意**不**给 stdout 设编码。Python 3.6+ 会自适应：
+#   - 输出到控制台 → 走 Windows 控制台 API，中文正常
+#   - 输出被重定向/接管道 → 用系统 locale 编码（中文 GBK）
+# 手动 reconfigure 成 UTF-8 反而会破坏第一种情况（控制台按代码页 936 解读
+# 就会显示成「浠撳簱」这种乱码），实测踩过。
 
 
 def say(message: str = "") -> None:
