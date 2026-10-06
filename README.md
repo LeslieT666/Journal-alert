@@ -163,6 +163,8 @@ run_daily.cmd --rerender
 | `make_package.py` | 打包成可移植 zip，供复制到另一台电脑 |
 | `.github/workflows/daily.yml` | 云端定时任务定义（每天 07:30 东八区跑 `run.py --once`） |
 | `config.local.json` | **不入库**的本机覆盖层，推送密钥写这里 |
+| `tools/obsidian-sync/` | 把日报同步进 Obsidian 库的脚本（复制到库根目录用，见 [第 5 节](#5-用-obsidian-管理日报)） |
+| `.gitattributes` | 行尾统一声明：文本文件一律 LF，批处理保持 CRLF |
 | `.gitignore` / `LICENSE` | 入库清单 / MIT 许可证 |
 
 **打包到另一台电脑**（完整清单见 [第 9 节](#9-换电脑迁移)）：
@@ -182,7 +184,13 @@ python make_package.py --keep-secrets  # 保留密钥：只在自己电脑之间
 
 `reports/` 下每天一篇 Markdown，天生适合 Obsidian：文件名就是日期，正文是标准语法（标题、引用块、表格、外链），头部还带 YAML 属性。
 
-**推荐：单独建一个只含 `reports/` 的库**，不要混进主笔记库。
+**推荐：单独建一个只含 `reports/` 的库**，不要混进主笔记库。整个库不到 100 KB。
+
+### 5.1 建库
+
+两种方式，按你的网络情况选：
+
+**方式 A：git sparse clone**（git 通道正常时用）
 
 ```bash
 git clone --filter=blob:none --sparse https://github.com/<用户名>/Journal-alert.git journal-alert-reports
@@ -192,21 +200,42 @@ printf '/reports/\n' > .git/info/sparse-checkout
 git read-tree -mu HEAD
 ```
 
-然后用 Obsidian 的「打开文件夹作为库」选中 `journal-alert-reports`。整个库不到 100 KB。
+**方式 B：只镜像文件，不用 git**（git 通道被掐时用，本机走的就是这条）
 
-> **两个坑**：① 不这么干的话，`jalert/*.py`、`state/seen.sqlite`、`README.md` 也会被索引，搜索和图谱里全是噪音；② `sparse-checkout` 的 **cone 模式总是保留根目录文件**，所以上面显式关掉 cone 模式、直接写规则文件。若在 Git Bash 里执行 `sparse-checkout set`，`/reports/` 会被 MSYS 当成绝对路径展开，那一步务必照上面写成规则文件。
+先用 `git init` 建一个空目录，或者干脆什么都不用建 —— 同步脚本会自己创建 `reports/`。适合
+`git push` / `git fetch` 走不通、但 `api.github.com` 可达的环境（见 [第 12.2 节](#122-本机推拉代码拉取用-git推送走-rest-api)）。
+仓库是公开的，因此**不需要任何 token**。
 
-同步用一个 `同步.cmd` 放在库根目录，双击即可拉到最新日报：
+两种方式都用 Obsidian 的「打开文件夹作为库」选中该目录。
 
-```bat
-@echo off
-cd /d "%~dp0"
-git fetch origin
-git merge --ff-only origin/main
-pause
+> **两个坑**：① 不隔离的话，`jalert/*.py`、`state/seen.sqlite`、`README.md` 也会被索引，搜索和图谱里全是噪音；② `sparse-checkout` 的 **cone 模式总是保留根目录文件**，所以上面显式关掉 cone 模式、直接写规则文件。若在 Git Bash 里执行 `sparse-checkout set`，`/reports/` 会被 MSYS 当成绝对路径展开，那一步务必照上面写成规则文件。
+
+### 5.2 每天同步
+
+把 `tools/obsidian-sync/` 下的两个文件复制到**库根目录**，双击 `同步.cmd` 即可。
+
+| 文件 | 作用 |
+|---|---|
+| `同步.cmd` | 双击运行。自己找 Python（PATH → 托管安装 → 版本目录），找到后调 `同步.py` |
+| `同步.py` | 同步引擎。用 GitHub API 列出 `reports/`，逐个比对 git blob sha，只写有变化的文件 |
+
+只用 Python 标准库，不需要 pip 装任何东西。命令行的用法：
+
+```bash
+python 同步.py            # 同步（幂等：没更新时一个文件都不碰）
+python 同步.py --list     # 只看远端有哪些日报，不下载
 ```
 
-**日报头部的属性**（由 `output.frontmatter` 控制，默认开）：
+> 为什么不用 git 同步：本机到 `github.com:443` 的通道不稳定（代理 502、TLS 握手失败、
+> 传输中途断流轮着来），而镜像只读、用不着提交历史。走 API 还顺带避开了行尾问题 ——
+> 写进来的是仓库里的原始字节（LF），不会被 `core.autocrlf` 在检出时改成 CRLF。
+>
+> 脚本按 **git blob 的 sha** 判断是否需要更新，而不是比时间戳或文件大小。这样没更新的日子
+> 文件 mtime 不变，Obsidian 不会白重载一遍；内容对不上但只是行尾差异时也只静默修正行尾。
+
+### 5.3 日报头部的属性
+
+由 `output.frontmatter` 控制（默认开）：
 
 | 字段 | 含义 |
 |---|---|
@@ -227,7 +256,7 @@ SORT file.name DESC
 ```
 ````
 
-**注意**：别在 Obsidian 里编辑 `reports/` 下的文件，同步时会冲突；库内其他位置随便加自己的笔记。
+**注意**：别在 Obsidian 里编辑 `reports/` 下的文件 —— 下次同步会按远端内容覆盖回去（内容或行尾只要对不上就会被重写）；库内其他位置随便加自己的笔记。
 
 ---
 
