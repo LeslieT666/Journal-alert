@@ -1,6 +1,6 @@
 {
   "project": {
-    "name": "大气环境文献日报",
+    "name": "医学影像分割与弱监督学习文献日报",
     "timezone": "Asia/Shanghai"
   },
   "window": {
@@ -12,7 +12,7 @@
     "api_timeout_seconds": 45,
     "retries": 2,
     "sources": {
-      "rss": true,
+      "rss": false,
       "openalex": true,
       "crossref": true
     }
@@ -28,85 +28,86 @@
   },
   "keywords": [
     {
-      "label": "空气污染",
-      "weight": 3,
+      "label": "医学影像分割",
+      "weight": 4,
       "terms": [
-        "air pollution",
-        "air pollutant",
-        "air quality",
-        "particulate matter",
-        "pm2.5",
-        "pm10",
-        "ultrafine particle",
-        "aerosol",
-        "ozone",
-        "no2",
-        "so2",
-        "haze",
-        "smog",
-        "emission inventory",
-        "anthropogenic emission",
-        "exposure assessment"
+        "medical image segmentation",
+        "medical imaging segmentation",
+        "medical segmentation",
+        "biomedical image segmentation",
+        "organ segmentation",
+        "tumor segmentation",
+        "tumour segmentation",
+        "lesion segmentation",
+        "brain segmentation",
+        "cardiac segmentation",
+        "liver segmentation",
+        "lung segmentation",
+        "prostate segmentation",
+        "nuclei segmentation",
+        "cell segmentation",
+        "vessel segmentation",
+        "retinal segmentation",
+        "polyp segmentation",
+        "volumetric segmentation",
+        "3d segmentation",
+        "multi-organ segmentation",
+        "anatomical segmentation"
       ]
     },
     {
-      "label": "遥感",
-      "weight": 3,
+      "label": "弱监督学习",
+      "weight": 4,
       "terms": [
-        "remote sensing",
-        "satellite",
-        "satellite observation",
-        "modis",
-        "viirs",
-        "tropomi",
-        "omi",
-        "landsat",
-        "sentinel-5p",
-        "hyperspectral",
-        "lidar",
-        "retrieval algorithm",
-        "geostationary",
-        "aerosol optical depth",
-        "aod"
+        "weakly supervised",
+        "weakly-supervised",
+        "weak supervision",
+        "weak supervision learning",
+        "weakly annotated",
+        "weak annotation",
+        "partially supervised",
+        "partial supervision",
+        "sparsely annotated",
+        "sparse annotation",
+        "scribble supervision",
+        "scribble-supervised",
+        "scribble annotation",
+        "point supervision",
+        "point-supervised",
+        "box supervision",
+        "box-supervised",
+        "bounding box annotation",
+        "image-level supervision",
+        "image level supervision",
+        "multiple instance learning",
+        "multiple-instance learning"
       ]
     },
     {
-      "label": "大气化学",
-      "weight": 3,
+      "label": "半监督与标注效率",
+      "weight": 2,
       "terms": [
-        "atmospheric chemistry",
-        "atmospheric oxidation",
-        "photochemistry",
-        "photochemical",
-        "secondary organic aerosol",
-        "soa",
-        "nox",
-        "voc",
-        "volatile organic",
-        "chemical transport model",
-        "heterogeneous chemistry",
-        "atmospheric lifetime",
-        "radical chemistry",
-        "oh radical"
+        "semi-supervised",
+        "semi supervised",
+        "semi-supervision",
+        "annotation-efficient",
+        "label-efficient",
+        "annotation efficient",
+        "label efficient",
+        "limited annotation",
+        "few-shot segmentation",
+        "pseudo-label",
+        "pseudo label",
+        "pseudo-labeling",
+        "pseudo-labelling"
       ]
     },
     {
-      "label": "生物地球化学",
-      "weight": 3,
+      "label": "通用分割方法",
+      "weight": 1,
       "terms": [
-        "biogeochemistry",
-        "biogeochemical",
-        "carbon cycle",
-        "nitrogen cycle",
-        "nutrient cycling",
-        "methane",
-        "ch4 flux",
-        "co2 flux",
-        "carbon flux",
-        "terrestrial carbon",
-        "soil carbon",
-        "nitrous oxide",
-        "n2o"
+        "segmentation",
+        "segmenting"
       ]
     }
   ],
@@ -134,99 +135,51 @@
   },
   "journals": [
     {
-      "name": "Nature",
-      "issn": "0028-0836",
-      "rss": "https://www.nature.com/nature.rss",
-      "enabled": true
-    },
-    {
-      "name": "Science",
-      "issn": "0036-8075",
-      "rss": "https://www.science.org/action/showFeed?type=etoc&feed=rss&jc=science",
-      "enabled": true
-    },
-    {
-      "name": "Nature Climate Change",
-      "issn": "1758-6798",
-      "rss": "https://www.nature.com/nclimate.rss",
-      "enabled": true
-    },
-    {
-      "name": "Nature Geoscience",
-      "issn": "1752-0908",
-      "rss": "https://www.nature.com/ngeo.rss",
-      "enabled": true
-    },
-    {
-      "name": "Nature Sustainability",
-      "issn": "2398-9629",
-      "rss": "https://www.nature.com/natsustain.rss",
-      "enabled": true
-    },
-    {
-      "name": "Nature Cities",
-      "issn": "2731-9997",
-      "rss": "https://www.nature.com/natcities.rss",
-      "enabled": true
-    },
-    {
-      "name": "Nature Communications",
-      "issn": "2041-1723",
-      "rss": "https://www.nature.com/ncomms.rss",
-      "enabled": true
-    },
-    {
-      "name": "Science Advances",
-      "issn": "2375-2548",
-      "rss": "https://www.science.org/action/showFeed?type=etoc&feed=rss&jc=sciadv",
-      "enabled": true
-    },
-    {
-      "name": "Earth's Future",
-      "issn": "2328-4277",
-      "rss": "https://agupubs.onlinelibrary.wiley.com/feed/23284277/most-recent",
-      "enabled": true
-    },
-    {
-      "name": "Atmospheric Chemistry and Physics",
-      "issn": "1680-7324",
-      "rss": "https://acp.copernicus.org/xml/rss2_0.xml",
-      "enabled": true
-    },
-    {
-      "name": "Environmental Science & Technology",
-      "issn": "0013-936X",
+      "name": "Medical Image Analysis",
+      "issn": "1361-8415",
       "rss": "",
       "enabled": true
     },
     {
-      "name": "Environmental Research Letters",
-      "issn": "1748-9326",
-      "rss": "https://iopscience.iop.org/journal/rss/1748-9326",
+      "name": "IEEE Transactions on Medical Imaging",
+      "issn": "0278-0062",
+      "rss": "",
       "enabled": true
     },
     {
-      "name": "Geophysical Research Letters",
-      "issn": "1944-8007",
-      "rss": "https://agupubs.onlinelibrary.wiley.com/feed/19448007/most-recent",
+      "name": "Computerized Medical Imaging and Graphics",
+      "issn": "0895-6111",
+      "rss": "",
       "enabled": true
     },
     {
-      "name": "Journal of Geophysical Research: Atmospheres",
-      "issn": "2169-8996",
-      "rss": "https://agupubs.onlinelibrary.wiley.com/feed/21698996/most-recent",
+      "name": "Pattern Recognition",
+      "issn": "0031-3203",
+      "rss": "",
       "enabled": true
     },
     {
-      "name": "Atmospheric Environment",
-      "issn": "1352-2310",
-      "rss": "https://rss.sciencedirect.com/publication/science/13522310",
+      "name": "IEEE Journal of Biomedical and Health Informatics",
+      "issn": "2168-2194",
+      "rss": "",
       "enabled": true
     },
     {
-      "name": "Remote Sensing of Environment",
-      "issn": "0034-4257",
-      "rss": "https://rss.sciencedirect.com/publication/science/00344257",
+      "name": "IEEE Transactions on Biomedical Engineering",
+      "issn": "0018-9294",
+      "rss": "",
+      "enabled": true
+    },
+    {
+      "name": "IEEE Transactions on Pattern Analysis and Machine Intelligence",
+      "issn": "0162-8828",
+      "rss": "",
+      "enabled": true
+    },
+    {
+      "name": "International Journal of Computer Vision",
+      "issn": "0920-5691",
+      "rss": "",
       "enabled": true
     }
   ],
@@ -241,7 +194,7 @@
         "sendkey": ""
       },
       "pushplus": {
-        "enabled": true,
+        "enabled": false,
         "token": ""
       },
       "bark": {
